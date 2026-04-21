@@ -6,7 +6,10 @@ namespace LaravelFunLab\Services;
 
 use Illuminate\Database\Eloquent\Model;
 use InvalidArgumentException;
+use LaravelFunLab\Enums\AwardType;
+use LaravelFunLab\Exceptions\AwardRejectedException;
 use LaravelFunLab\Models\ProfileMetric;
+use LaravelFunLab\Pipelines\AwardValidationPipeline;
 
 /**
  * AwardXpBuilder
@@ -124,6 +127,30 @@ class AwardXpBuilder
 
         if ($this->amount <= 0) {
             throw new InvalidArgumentException('Amount must be greater than 0. Use ->amount(50) to set the XP amount.');
+        }
+
+        $cap = (int) config('lfl.defaults.max_points_per_action', 0);
+        if ($cap > 0 && $this->amount > $cap) {
+            throw new AwardRejectedException(
+                "Award amount {$this->amount} exceeds the configured per-action cap of {$cap}.",
+                'cap_exceeded',
+            );
+        }
+
+        $validation = AwardValidationPipeline::validate(
+            awardable: $this->recipient,
+            type: AwardType::Points,
+            amount: $this->amount,
+            reason: $this->reason,
+            source: $this->source,
+            meta: $this->meta,
+        );
+
+        if (isset($validation['valid']) && $validation['valid'] === false) {
+            throw new AwardRejectedException(
+                $validation['message'] ?? 'Award rejected by validation pipeline.',
+                'pipeline_rejected',
+            );
         }
 
         return $this->gamedMetricService->awardXp(

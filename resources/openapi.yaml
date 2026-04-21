@@ -1,0 +1,657 @@
+openapi: 3.0.3
+info:
+  title: Laravel Fun Lab REST API
+  description: |
+    Analytics-driven gamification primitives over HTTP. LFL ships no auth or
+    transport; consumers wrap this API with their own security layer.
+  version: "0.x"
+  license:
+    name: MIT
+servers:
+  - url: "{scheme}://{host}/{prefix}"
+    variables:
+      scheme: { default: "https" }
+      host: { default: "localhost" }
+      prefix: { default: "api/lfl" }
+
+tags:
+  - name: Me
+    description: Convenience endpoints for the authenticated awardable.
+  - name: Profiles
+  - name: Awards
+  - name: Leaderboards
+  - name: Achievements
+  - name: Prizes
+  - name: GamedMetrics
+  - name: MetricLevels
+  - name: Spec
+
+paths:
+  /openapi.json:
+    get:
+      summary: Fetch the OpenAPI spec
+      tags: [Spec]
+      responses:
+        '200':
+          description: OpenAPI JSON
+          content:
+            application/json:
+              schema: { type: object }
+
+  /me/profile:
+    get:
+      summary: Get the authenticated awardable's profile
+      tags: [Me]
+      security: [{ ConsumerAuth: [] }]
+      responses:
+        '200': { $ref: '#/components/responses/Profile' }
+        '401': { $ref: '#/components/responses/Unauthenticated' }
+        '422': { $ref: '#/components/responses/NotAwardable' }
+
+  /me/achievements:
+    get:
+      summary: Get achievements granted to the authenticated awardable
+      tags: [Me]
+      security: [{ ConsumerAuth: [] }]
+      responses:
+        '200':
+          description: Achievement collection
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  data:
+                    type: array
+                    items: { $ref: '#/components/schemas/Achievement' }
+        '401': { $ref: '#/components/responses/Unauthenticated' }
+
+  /me/awards:
+    get:
+      summary: Get ProfileMetrics (XP per GamedMetric) for the authenticated awardable
+      tags: [Me]
+      security: [{ ConsumerAuth: [] }]
+      parameters:
+        - { in: query, name: per_page, schema: { type: integer, default: 15 } }
+      responses:
+        '200': { $ref: '#/components/responses/PaginatedAwards' }
+        '401': { $ref: '#/components/responses/Unauthenticated' }
+
+  /profiles/{type}/{id}:
+    get:
+      summary: Get a profile by awardable polymorph
+      tags: [Profiles]
+      parameters:
+        - $ref: '#/components/parameters/AwardableType'
+        - $ref: '#/components/parameters/AwardableId'
+      responses:
+        '200': { $ref: '#/components/responses/Profile' }
+        '404': { $ref: '#/components/responses/NotFound' }
+
+  /profiles/{type}/{id}/opt-in:
+    post:
+      summary: Opt an awardable into gamification
+      tags: [Profiles]
+      security: [{ ConsumerAuth: [] }]
+      parameters:
+        - $ref: '#/components/parameters/AwardableType'
+        - $ref: '#/components/parameters/AwardableId'
+      responses:
+        '200': { $ref: '#/components/responses/Profile' }
+        '404': { $ref: '#/components/responses/NotFound' }
+        '422': { $ref: '#/components/responses/NotAwardable' }
+
+  /profiles/{type}/{id}/opt-out:
+    post:
+      summary: Opt an awardable out of gamification
+      tags: [Profiles]
+      security: [{ ConsumerAuth: [] }]
+      parameters:
+        - $ref: '#/components/parameters/AwardableType'
+        - $ref: '#/components/parameters/AwardableId'
+      responses:
+        '200': { $ref: '#/components/responses/Profile' }
+        '404': { $ref: '#/components/responses/NotFound' }
+        '422': { $ref: '#/components/responses/NotAwardable' }
+
+  /awards/{type}/{id}:
+    get:
+      summary: Get XP metrics for a specific awardable
+      tags: [Awards]
+      parameters:
+        - $ref: '#/components/parameters/AwardableType'
+        - $ref: '#/components/parameters/AwardableId'
+        - { in: query, name: metric_slug, schema: { type: string } }
+        - { in: query, name: per_page, schema: { type: integer, default: 15 } }
+        - { in: query, name: page, schema: { type: integer, default: 1 } }
+      responses:
+        '200': { $ref: '#/components/responses/PaginatedAwards' }
+
+  /awards:
+    post:
+      summary: Award XP
+      description: Wraps LFL::award(metric_slug)->to()->amount()->save(). Gated by config('lfl.api.writes').
+      tags: [Awards]
+      security: [{ ConsumerAuth: [] }]
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema: { $ref: '#/components/schemas/AwardXpRequest' }
+      responses:
+        '200':
+          description: Award persisted
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  data: { $ref: '#/components/schemas/Award' }
+        '422': { $ref: '#/components/responses/ValidationError' }
+        '404': { $ref: '#/components/responses/NotFound' }
+
+  /grants:
+    post:
+      summary: Grant an Achievement or Prize
+      description: Wraps LFL::grant(slug)->to()->save(). Slug auto-resolves to Achievement or Prize.
+      tags: [Achievements]
+      security: [{ ConsumerAuth: [] }]
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema: { $ref: '#/components/schemas/GrantRequest' }
+      responses:
+        '200':
+          description: Grant persisted
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  data: { $ref: '#/components/schemas/AwardGrant' }
+        '422': { $ref: '#/components/responses/ValidationError' }
+        '404': { $ref: '#/components/responses/NotFound' }
+
+  /leaderboards/{type}:
+    get:
+      summary: Leaderboard for an awardable type
+      tags: [Leaderboards]
+      parameters:
+        - $ref: '#/components/parameters/AwardableType'
+        - { in: query, name: by, schema: { type: string, enum: [xp, achievements, prizes], default: xp } }
+        - { in: query, name: period, schema: { type: string, enum: [daily, weekly, monthly, all-time], default: all-time } }
+        - { in: query, name: per_page, schema: { type: integer, default: 15 } }
+        - { in: query, name: page, schema: { type: integer, default: 1 } }
+      responses:
+        '200':
+          description: Paginated leaderboard
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  data:
+                    type: array
+                    items: { $ref: '#/components/schemas/LeaderboardEntry' }
+                  meta: { $ref: '#/components/schemas/PaginationMeta' }
+                  links: { $ref: '#/components/schemas/PaginationLinks' }
+
+  /achievements:
+    get:
+      summary: List all available achievements
+      tags: [Achievements]
+      parameters:
+        - { in: query, name: awardable_type, schema: { type: string } }
+        - { in: query, name: active, schema: { type: boolean, default: true } }
+      responses:
+        '200':
+          description: Achievement collection
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  data:
+                    type: array
+                    items: { $ref: '#/components/schemas/Achievement' }
+    post:
+      summary: Create an Achievement (setup)
+      tags: [Achievements]
+      security: [{ ConsumerAuth: [] }]
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema: { $ref: '#/components/schemas/AchievementSetupRequest' }
+      responses:
+        '200':
+          description: Achievement created
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  data: { $ref: '#/components/schemas/Achievement' }
+        '422': { $ref: '#/components/responses/ValidationError' }
+
+  /gamed-metrics:
+    get:
+      summary: List GamedMetrics
+      tags: [GamedMetrics]
+      parameters:
+        - { in: query, name: active, schema: { type: boolean } }
+      responses:
+        '200':
+          description: GamedMetric collection
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  data:
+                    type: array
+                    items: { $ref: '#/components/schemas/GamedMetric' }
+    post:
+      summary: Create a GamedMetric (setup)
+      tags: [GamedMetrics]
+      security: [{ ConsumerAuth: [] }]
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema: { $ref: '#/components/schemas/GamedMetricSetupRequest' }
+      responses:
+        '200':
+          description: GamedMetric created
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  data: { $ref: '#/components/schemas/GamedMetric' }
+
+  /metric-levels:
+    post:
+      summary: Create a MetricLevel threshold (setup)
+      tags: [MetricLevels]
+      security: [{ ConsumerAuth: [] }]
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema: { $ref: '#/components/schemas/MetricLevelSetupRequest' }
+      responses:
+        '200':
+          description: MetricLevel created
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  data: { $ref: '#/components/schemas/MetricLevel' }
+
+  /metric-levels/{metric}:
+    get:
+      summary: List MetricLevels for a given GamedMetric
+      tags: [MetricLevels]
+      parameters:
+        - { in: path, name: metric, required: true, schema: { type: string }, description: "GamedMetric slug" }
+      responses:
+        '200':
+          description: MetricLevel collection
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  data:
+                    type: array
+                    items: { $ref: '#/components/schemas/MetricLevel' }
+        '404': { $ref: '#/components/responses/NotFound' }
+
+  /prizes:
+    get:
+      summary: List Prizes
+      tags: [Prizes]
+      parameters:
+        - { in: query, name: active, schema: { type: boolean, default: true } }
+      responses:
+        '200':
+          description: Prize collection
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  data:
+                    type: array
+                    items: { $ref: '#/components/schemas/Prize' }
+    post:
+      summary: Create a Prize (setup)
+      tags: [Prizes]
+      security: [{ ConsumerAuth: [] }]
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema: { $ref: '#/components/schemas/PrizeSetupRequest' }
+      responses:
+        '200':
+          description: Prize created
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  data: { $ref: '#/components/schemas/Prize' }
+
+components:
+  securitySchemes:
+    ConsumerAuth:
+      type: http
+      scheme: bearer
+      description: |
+        Authentication is the consumer's contract. LFL ships no auth. Point
+        config('lfl.api.auth.middleware') at any Laravel middleware (auth:sanctum,
+        auth:api, a custom guard, etc.). This scheme documents that protected
+        endpoints expect some form of credential; the specific format depends
+        on the consumer's configuration.
+
+  parameters:
+    AwardableType:
+      in: path
+      name: type
+      required: true
+      schema: { type: string }
+      description: Fully-qualified awardable class name (e.g. `App\Models\User`)
+    AwardableId:
+      in: path
+      name: id
+      required: true
+      schema: { type: string }
+
+  responses:
+    Profile:
+      description: A single profile
+      content:
+        application/json:
+          schema:
+            type: object
+            properties:
+              data: { $ref: '#/components/schemas/Profile' }
+    PaginatedAwards:
+      description: Paginated ProfileMetrics + profile summary
+      content:
+        application/json:
+          schema:
+            type: object
+            properties:
+              data:
+                type: array
+                items: { $ref: '#/components/schemas/Award' }
+              profile: { $ref: '#/components/schemas/Profile' }
+              meta: { $ref: '#/components/schemas/PaginationMeta' }
+              links: { $ref: '#/components/schemas/PaginationLinks' }
+    NotFound:
+      description: Resource not found
+      content:
+        application/json:
+          schema: { $ref: '#/components/schemas/Error' }
+    Unauthenticated:
+      description: Missing or invalid credentials
+      content:
+        application/json:
+          schema: { $ref: '#/components/schemas/Error' }
+    ValidationError:
+      description: Validation failed
+      content:
+        application/json:
+          schema: { $ref: '#/components/schemas/ValidationError' }
+    NotAwardable:
+      description: The target model does not use the Awardable trait
+      content:
+        application/json:
+          schema: { $ref: '#/components/schemas/Error' }
+
+  schemas:
+    Profile:
+      type: object
+      properties:
+        id: { type: integer }
+        awardable_type: { type: string }
+        awardable_id: { oneOf: [{ type: integer }, { type: string }] }
+        is_opted_in: { type: boolean }
+        display_preferences: { type: object, nullable: true }
+        visibility_settings: { type: object, nullable: true }
+        total_xp: { type: integer }
+        achievement_count: { type: integer }
+        prize_count: { type: integer }
+        last_activity_at: { type: string, format: date-time, nullable: true }
+        created_at: { type: string, format: date-time, nullable: true }
+        updated_at: { type: string, format: date-time, nullable: true }
+
+    LeaderboardEntry:
+      type: object
+      properties:
+        rank: { type: integer, nullable: true }
+        id: { type: integer }
+        awardable_type: { type: string }
+        awardable_id: { oneOf: [{ type: integer }, { type: string }] }
+        total_xp: { type: integer }
+        achievement_count: { type: integer }
+        prize_count: { type: integer }
+        last_activity_at: { type: string, format: date-time, nullable: true }
+
+    Award:
+      type: object
+      description: A ProfileMetric — XP for a given GamedMetric
+      properties:
+        id: { type: integer }
+        profile_id: { type: integer }
+        gamed_metric_id: { type: integer }
+        gamed_metric_slug: { type: string, nullable: true }
+        gamed_metric_name: { type: string, nullable: true }
+        total_xp: { type: integer }
+        current_level: { type: integer }
+        created_at: { type: string, format: date-time, nullable: true }
+        updated_at: { type: string, format: date-time, nullable: true }
+
+    AwardGrant:
+      oneOf:
+        - $ref: '#/components/schemas/AchievementGrant'
+        - $ref: '#/components/schemas/PrizeGrant'
+      discriminator:
+        propertyName: grant_type
+        mapping:
+          achievement: '#/components/schemas/AchievementGrant'
+          prize: '#/components/schemas/PrizeGrant'
+
+    AchievementGrant:
+      type: object
+      properties:
+        grant_type: { type: string, enum: [achievement] }
+        id: { type: integer }
+        profile_id: { type: integer }
+        achievement_id: { type: integer }
+        achievement_slug: { type: string, nullable: true }
+        achievement_name: { type: string, nullable: true }
+        reason: { type: string, nullable: true }
+        source: { type: string, nullable: true }
+        meta: { type: object, nullable: true }
+        granted_at: { type: string, format: date-time, nullable: true }
+
+    PrizeGrant:
+      type: object
+      properties:
+        grant_type: { type: string, enum: [prize] }
+        id: { type: integer }
+        profile_id: { type: integer }
+        prize_id: { type: integer }
+        prize_slug: { type: string, nullable: true }
+        prize_name: { type: string, nullable: true }
+        status: { type: string }
+        reason: { type: string, nullable: true }
+        source: { type: string, nullable: true }
+        meta: { type: object, nullable: true }
+        granted_at: { type: string, format: date-time, nullable: true }
+
+    Achievement:
+      type: object
+      properties:
+        id: { type: integer }
+        slug: { type: string }
+        name: { type: string }
+        description: { type: string, nullable: true }
+        icon: { type: string, nullable: true }
+        awardable_type: { type: string, nullable: true }
+        meta: { type: object, nullable: true }
+        is_active: { type: boolean }
+        sort_order: { type: integer }
+        created_at: { type: string, format: date-time, nullable: true }
+        updated_at: { type: string, format: date-time, nullable: true }
+
+    GamedMetric:
+      type: object
+      properties:
+        id: { type: integer }
+        slug: { type: string }
+        name: { type: string }
+        description: { type: string, nullable: true }
+        icon: { type: string, nullable: true }
+        active: { type: boolean }
+        created_at: { type: string, format: date-time, nullable: true }
+        updated_at: { type: string, format: date-time, nullable: true }
+
+    MetricLevel:
+      type: object
+      properties:
+        id: { type: integer }
+        gamed_metric_id: { type: integer }
+        gamed_metric_slug: { type: string, nullable: true }
+        level: { type: integer }
+        xp_threshold: { type: integer }
+        name: { type: string, nullable: true }
+        description: { type: string, nullable: true }
+        created_at: { type: string, format: date-time, nullable: true }
+        updated_at: { type: string, format: date-time, nullable: true }
+
+    Prize:
+      type: object
+      properties:
+        id: { type: integer }
+        slug: { type: string }
+        name: { type: string }
+        description: { type: string, nullable: true }
+        type: { type: string, nullable: true }
+        cost_in_points: { type: number }
+        inventory_quantity: { type: integer, nullable: true }
+        remaining_inventory: { type: integer, nullable: true }
+        meta: { type: object, nullable: true }
+        is_active: { type: boolean }
+        sort_order: { type: integer }
+        created_at: { type: string, format: date-time, nullable: true }
+        updated_at: { type: string, format: date-time, nullable: true }
+
+    AwardXpRequest:
+      type: object
+      required: [metric_slug, awardable_type, awardable_id, amount]
+      properties:
+        metric_slug: { type: string }
+        awardable_type: { type: string }
+        awardable_id: { oneOf: [{ type: integer }, { type: string }] }
+        amount: { type: integer, minimum: 1 }
+        reason: { type: string, nullable: true }
+        source: { type: string, nullable: true }
+        meta: { type: object, nullable: true }
+
+    GrantRequest:
+      type: object
+      required: [slug, awardable_type, awardable_id]
+      properties:
+        slug: { type: string }
+        awardable_type: { type: string }
+        awardable_id: { oneOf: [{ type: integer }, { type: string }] }
+        reason: { type: string, nullable: true }
+        source: { type: string, nullable: true }
+        meta: { type: object, nullable: true }
+
+    AchievementSetupRequest:
+      type: object
+      required: [slug, name]
+      properties:
+        slug: { type: string }
+        name: { type: string }
+        description: { type: string, nullable: true }
+        icon: { type: string, nullable: true }
+        for: { type: string, nullable: true, description: "Awardable class this achievement targets" }
+        metadata: { type: object, nullable: true }
+        active: { type: boolean }
+        order: { type: integer }
+
+    GamedMetricSetupRequest:
+      type: object
+      required: [slug]
+      properties:
+        slug: { type: string }
+        name: { type: string }
+        description: { type: string, nullable: true }
+        icon: { type: string, nullable: true }
+        active: { type: boolean }
+
+    MetricLevelSetupRequest:
+      type: object
+      required: [metric, level, xp]
+      properties:
+        metric: { type: string, description: "GamedMetric slug" }
+        level: { type: integer, minimum: 1 }
+        xp: { type: integer, minimum: 0 }
+        name: { type: string, nullable: true }
+        description: { type: string, nullable: true }
+
+    PrizeSetupRequest:
+      type: object
+      required: [slug, name]
+      properties:
+        slug: { type: string }
+        name: { type: string }
+        description: { type: string, nullable: true }
+        type: { type: string, nullable: true }
+        cost: { type: number }
+        inventory: { type: integer, nullable: true }
+        meta: { type: object, nullable: true }
+        active: { type: boolean }
+        order: { type: integer }
+
+    PaginationMeta:
+      type: object
+      properties:
+        current_page: { type: integer, nullable: true }
+        from: { type: integer, nullable: true }
+        last_page: { type: integer, nullable: true }
+        per_page: { type: integer, nullable: true }
+        to: { type: integer, nullable: true }
+        total: { type: integer }
+
+    PaginationLinks:
+      type: object
+      properties:
+        first: { type: string, nullable: true }
+        last: { type: string, nullable: true }
+        prev: { type: string, nullable: true }
+        next: { type: string, nullable: true }
+
+    Error:
+      type: object
+      properties:
+        message: { type: string }
+
+    ValidationError:
+      type: object
+      properties:
+        message: { type: string }
+        errors:
+          type: object
+          additionalProperties:
+            type: array
+            items: { type: string }

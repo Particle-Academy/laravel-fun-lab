@@ -97,13 +97,19 @@ class EventLog extends Model
     {
         $logData = $event->toLogArray();
 
+        // Catalog and other system events may not have a recipient. The
+        // lfl_event_logs table requires awardable_type/id NOT NULL, so fall
+        // back to a sentinel that signals "no awardable was involved".
+        $awardableType = $logData['recipient_type'] ?? $logData['actor_type'] ?? 'system';
+        $awardableId = $logData['recipient_id'] ?? $logData['actor_id'] ?? 0;
+
         return static::create([
             'event_type' => $logData['event_type'],
-            'award_type' => $logData['award_type'],
-            'awardable_type' => $logData['recipient_type'],
-            'awardable_id' => $logData['recipient_id'],
-            'award_id' => $logData['award_id'] ?? $logData['grant_id'] ?? null,
-            'achievement_slug' => $logData['achievement_slug'] ?? null,
+            'award_type' => $logData['award_type'] ?? 'system',
+            'awardable_type' => $awardableType,
+            'awardable_id' => $awardableId,
+            'award_id' => $logData['award_id'] ?? $logData['grant_id'] ?? $logData['entity_id'] ?? null,
+            'achievement_slug' => $logData['achievement_slug'] ?? $logData['entity_slug'] ?? null,
             'amount' => $logData['amount'] ?? null,
             'reason' => $logData['reason'] ?? null,
             'source' => $logData['source'] ?? null,

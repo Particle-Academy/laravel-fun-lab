@@ -5,6 +5,8 @@ declare(strict_types=1);
 namespace LaravelFunLab\Events;
 
 use Illuminate\Broadcasting\InteractsWithSockets;
+use Illuminate\Broadcasting\PrivateChannel;
+use Illuminate\Contracts\Broadcasting\ShouldBroadcast;
 use Illuminate\Database\Eloquent\Model;
 use Illuminate\Foundation\Events\Dispatchable;
 use Illuminate\Queue\SerializesModels;
@@ -18,8 +20,12 @@ use LaravelFunLab\Models\AchievementGrant;
  *
  * Dispatched whenever an achievement is unlocked/granted to an entity.
  * Contains full context including the achievement definition and grant record.
+ *
+ * Broadcasts on private channel `lfl.profile.{awardable_type}.{awardable_id}`
+ * when config('lfl.events.broadcast') is true. Transport driver is the
+ * consumer's responsibility.
  */
-class AchievementUnlocked implements LflEvent
+class AchievementUnlocked implements LflEvent, ShouldBroadcast
 {
     use Dispatchable, InteractsWithSockets, SerializesModels;
 
@@ -84,6 +90,46 @@ class AchievementUnlocked implements LflEvent
     public function getAchievementName(): string
     {
         return $this->achievement->name;
+    }
+
+    public function broadcastWhen(): bool
+    {
+        return (bool) config('lfl.events.broadcast', false);
+    }
+
+    /**
+     * @return array<int, PrivateChannel>
+     */
+    public function broadcastOn(): array
+    {
+        $type = str_replace('\\', '.', get_class($this->recipient));
+        $id = $this->recipient->getKey();
+
+        return [new PrivateChannel("lfl.profile.{$type}.{$id}")];
+    }
+
+    public function broadcastAs(): string
+    {
+        return 'achievement.unlocked';
+    }
+
+    /**
+     * @return array<string, mixed>
+     */
+    public function broadcastWith(): array
+    {
+        return [
+            'grant_type' => 'achievement',
+            'id' => $this->grant->id,
+            'profile_id' => $this->grant->profile_id,
+            'achievement_id' => $this->achievement->id,
+            'achievement_slug' => $this->achievement->slug,
+            'achievement_name' => $this->achievement->name,
+            'achievement_icon' => $this->achievement->icon,
+            'reason' => $this->reason,
+            'source' => $this->source,
+            'granted_at' => $this->grant->created_at?->toIso8601String(),
+        ];
     }
 
     /**

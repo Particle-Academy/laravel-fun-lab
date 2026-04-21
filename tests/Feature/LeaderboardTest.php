@@ -45,8 +45,8 @@ describe('LeaderboardBuilder', function () {
         $profile1 = $user1->getProfile();
         $profile2 = $user2->getProfile();
 
-        $profile1->update(['total_xp' => 100]);
-        $profile2->update(['total_xp' => 50]);
+        $profile1->setAggregates(['total_xp' => 100]);
+        $profile2->setAggregates(['total_xp' => 50]);
 
         $leaderboard = LFL::leaderboard()
             ->for(User::class)
@@ -65,9 +65,9 @@ describe('LeaderboardBuilder', function () {
         $profile2 = $user2->getProfile();
         $profile3 = $user3->getProfile();
 
-        $profile1->update(['total_xp' => 50]);
-        $profile2->update(['total_xp' => 100]);
-        $profile3->update(['total_xp' => 75]);
+        $profile1->setAggregates(['total_xp' => 50]);
+        $profile2->setAggregates(['total_xp' => 100]);
+        $profile3->setAggregates(['total_xp' => 75]);
 
         $leaderboard = LFL::leaderboard()
             ->for(User::class)
@@ -84,8 +84,8 @@ describe('LeaderboardBuilder', function () {
         $profile1 = $user1->getProfile();
         $profile2 = $user2->getProfile();
 
-        $profile1->update(['achievement_count' => 5]);
-        $profile2->update(['achievement_count' => 10]);
+        $profile1->setAggregates(['achievement_count' => 5]);
+        $profile2->setAggregates(['achievement_count' => 10]);
 
         $leaderboard = LFL::leaderboard()
             ->for(User::class)
@@ -103,8 +103,8 @@ describe('LeaderboardBuilder', function () {
         $profile1 = $user1->getProfile();
         $profile2 = $user2->getProfile();
 
-        $profile1->update(['prize_count' => 2]);
-        $profile2->update(['prize_count' => 5]);
+        $profile1->setAggregates(['prize_count' => 2]);
+        $profile2->setAggregates(['prize_count' => 5]);
 
         $leaderboard = LFL::leaderboard()
             ->for(User::class)
@@ -122,8 +122,9 @@ describe('LeaderboardBuilder', function () {
         $profile1 = $user1->getProfile();
         $profile2 = $user2->getProfile();
 
-        $profile1->update(['total_xp' => 100]);
-        $profile2->update(['total_xp' => 50, 'is_opted_in' => false]);
+        $profile1->setAggregates(['total_xp' => 100]);
+        $profile2->setAggregates(['total_xp' => 50]);
+        $profile2->update(['is_opted_in' => false]);
 
         $leaderboard = LFL::leaderboard()
             ->for(User::class)
@@ -140,8 +141,9 @@ describe('LeaderboardBuilder', function () {
         $profile1 = $user1->getProfile();
         $profile2 = $user2->getProfile();
 
-        $profile1->update(['total_xp' => 100]);
-        $profile2->update(['total_xp' => 50, 'is_opted_in' => false]);
+        $profile1->setAggregates(['total_xp' => 100]);
+        $profile2->setAggregates(['total_xp' => 50]);
+        $profile2->update(['is_opted_in' => false]);
 
         $leaderboard = LFL::leaderboard()
             ->for(User::class)
@@ -160,9 +162,9 @@ describe('LeaderboardBuilder', function () {
         $profile2 = $user2->getProfile();
         $profile3 = $user3->getProfile();
 
-        $profile1->update(['total_xp' => 50]);
-        $profile2->update(['total_xp' => 100]);
-        $profile3->update(['total_xp' => 75]);
+        $profile1->setAggregates(['total_xp' => 50]);
+        $profile2->setAggregates(['total_xp' => 100]);
+        $profile3->setAggregates(['total_xp' => 75]);
 
         $leaderboard = LFL::leaderboard()
             ->for(User::class)
@@ -178,7 +180,7 @@ describe('LeaderboardBuilder', function () {
         $users = [];
         for ($i = 1; $i <= 5; $i++) {
             $users[] = User::create(['name' => "User {$i}", 'email' => "user{$i}@example.com"]);
-            $users[$i - 1]->getProfile()->update(['total_xp' => $i * 10]);
+            $users[$i - 1]->getProfile()->setAggregates(['total_xp' => $i * 10]);
         }
 
         $paginator = LFL::leaderboard()
@@ -198,7 +200,7 @@ describe('LeaderboardBuilder', function () {
         $users = [];
         for ($i = 1; $i <= 5; $i++) {
             $users[] = User::create(['name' => "User {$i}", 'email' => "user{$i}@example.com"]);
-            $users[$i - 1]->getProfile()->update(['total_xp' => $i * 10]);
+            $users[$i - 1]->getProfile()->setAggregates(['total_xp' => $i * 10]);
         }
 
         $paginator = LFL::leaderboard()
@@ -216,7 +218,7 @@ describe('LeaderboardBuilder', function () {
         $users = [];
         for ($i = 1; $i <= 5; $i++) {
             $users[] = User::create(['name' => "User {$i}", 'email' => "user{$i}@example.com"]);
-            $users[$i - 1]->getProfile()->update(['total_xp' => $i * 10]);
+            $users[$i - 1]->getProfile()->setAggregates(['total_xp' => $i * 10]);
         }
 
         $leaderboard = LFL::leaderboard()
@@ -296,8 +298,8 @@ describe('LeaderboardBuilder', function () {
             $profile1 = $user1->getProfile();
             $profile2 = $user2->getProfile();
 
-            $profile1->update(['total_xp' => 100]);
-            $profile2->update(['total_xp' => 50]);
+            $profile1->setAggregates(['total_xp' => 100]);
+            $profile2->setAggregates(['total_xp' => 50]);
 
             $leaderboard1 = LFL::leaderboard()
                 ->for(User::class)

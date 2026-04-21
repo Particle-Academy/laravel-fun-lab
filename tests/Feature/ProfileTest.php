@@ -170,17 +170,17 @@ describe('Profile Model', function () {
             $user1 = User::create(['name' => 'User 1', 'email' => 'user1@example.com']);
             $user2 = User::create(['name' => 'User 2', 'email' => 'user2@example.com']);
 
-            Profile::create([
+            $p1 = Profile::create([
                 'awardable_type' => User::class,
                 'awardable_id' => $user1->id,
-                'total_xp' => 100,
             ]);
+            $p1->setAggregates(['total_xp' => 100]);
 
-            Profile::create([
+            $p2 = Profile::create([
                 'awardable_type' => User::class,
                 'awardable_id' => $user2->id,
-                'total_xp' => 200,
             ]);
+            $p2->setAggregates(['total_xp' => 200]);
 
             $ordered = Profile::orderedByXp()->get();
 
@@ -311,13 +311,13 @@ describe('Opt-In/Opt-Out Logic', function () {
 
         $user->optOut();
 
-        // Awarding XP to opted-out user should still work at the service level
-        // but the profile won't be opted in for leaderboard visibility
-        // Use the new LFL::award() API
-        $result = LFL::award('general-xp')->to($user)->amount(50)->save();
+        // XP awards to opted-out recipients are rejected at the service
+        // layer — matches the behavior for achievement and prize grants.
+        expect(fn () => LFL::award('general-xp')->to($user)->amount(50)->save())
+            ->toThrow(\LaravelFunLab\Exceptions\AwardRejectedException::class);
 
-        expect($result->total_xp)->toBe(50);
         expect($user->fresh()->profile->isOptedOut())->toBeTrue();
+        expect($user->fresh()->profile->total_xp)->toBe(0);
     });
 
     it('blocks achievements when opted out', function () {
@@ -468,7 +468,7 @@ describe('Profile Aggregations', function () {
         $profile = $user->getProfile();
 
         // Set incorrect values
-        $profile->update([
+        $profile->setAggregates([
             'total_xp' => 0,
             'achievement_count' => 0,
             'prize_count' => 0,

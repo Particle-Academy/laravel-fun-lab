@@ -54,6 +54,22 @@ class GamedMetricService
             throw new \InvalidArgumentException("GamedMetric '{$metric->slug}' is not active.");
         }
 
+        // Reject XP awards for opted-out awardables. Matches the opt-out check
+        // already enforced in grantAchievementInternal and grantPrizeInternal.
+        // Looks at the Profile (not the trait method) so an awardable that
+        // didn't define isOptedOut() still gets the check.
+        if (method_exists($awardable, 'getProfile')) {
+            $existingProfile = \LaravelFunLab\Models\Profile::where('awardable_type', get_class($awardable))
+                ->where('awardable_id', $awardable->getKey())
+                ->first();
+            if ($existingProfile !== null && $existingProfile->isOptedOut()) {
+                throw new \LaravelFunLab\Exceptions\AwardRejectedException(
+                    'Recipient has opted out of gamification.',
+                    'opted_out',
+                );
+            }
+        }
+
         // Get or create Profile for the awardable
         $profile = $this->getOrCreateProfile($awardable);
 

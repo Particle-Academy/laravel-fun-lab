@@ -43,7 +43,7 @@ describe('API Routes', function () {
         it('returns profile data for a user', function () {
             $user = User::create(['name' => 'Test User', 'email' => 'test@example.com']);
             $profile = $user->getProfile();
-            $profile->update([
+            $profile->setAggregates([
                 'total_xp' => 150,
                 'achievement_count' => 3,
                 'prize_count' => 2,
@@ -99,8 +99,8 @@ describe('API Routes', function () {
             $profile1 = $user1->getProfile();
             $profile2 = $user2->getProfile();
 
-            $profile1->update(['total_xp' => 200]);
-            $profile2->update(['total_xp' => 100]);
+            $profile1->setAggregates(['total_xp' => 200]);
+            $profile2->setAggregates(['total_xp' => 100]);
 
             $response = $this->getJson('/api/lfl/leaderboards/'.urlencode(User::class));
 
@@ -149,8 +149,8 @@ describe('API Routes', function () {
             $profile1 = $user1->getProfile();
             $profile2 = $user2->getProfile();
 
-            $profile1->update(['achievement_count' => 5]);
-            $profile2->update(['achievement_count' => 10]);
+            $profile1->setAggregates(['achievement_count' => 5]);
+            $profile2->setAggregates(['achievement_count' => 10]);
 
             $response = $this->getJson('/api/lfl/leaderboards/'.urlencode(User::class).'?by=achievements');
 
@@ -165,7 +165,7 @@ describe('API Routes', function () {
             for ($i = 1; $i <= 20; $i++) {
                 $user = User::create(['name' => "User {$i}", 'email' => "user{$i}@example.com"]);
                 $profile = $user->getProfile();
-                $profile->update(['total_xp' => $i * 10]);
+                $profile->setAggregates(['total_xp' => $i * 10]);
             }
 
             $response = $this->getJson('/api/lfl/leaderboards/'.urlencode(User::class).'?per_page=5&page=1');
@@ -184,8 +184,8 @@ describe('API Routes', function () {
             $profile1 = $user1->getProfile();
             $profile2 = $user2->getProfile();
 
-            $profile1->update(['total_xp' => 100]);
-            $profile2->update(['total_xp' => 50]);
+            $profile1->setAggregates(['total_xp' => 100]);
+            $profile2->setAggregates(['total_xp' => 50]);
 
             $response = $this->getJson('/api/lfl/leaderboards/'.urlencode(User::class).'?period=weekly');
 

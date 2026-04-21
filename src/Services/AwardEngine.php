@@ -74,6 +74,36 @@ class AwardEngine implements AwardEngineContract
         // Normalize entity type (handle aliases)
         $normalizedType = SetupValidator::normalizeType($a);
 
+        $model = $this->dispatchSetup($normalizedType, $validated);
+
+        $this->dispatchCatalogMutated($normalizedType, $model);
+
+        return $model;
+    }
+
+    /**
+     * Dispatch the CatalogMutated audit event (no-op if event dispatch disabled).
+     */
+    protected function dispatchCatalogMutated(string $entityType, Model $model): void
+    {
+        if (! $this->isEventDispatchEnabled()) {
+            return;
+        }
+
+        $wasCreated = (bool) $model->wasRecentlyCreated;
+        $actor = function_exists('auth') ? auth()->user() : null;
+
+        event(new \LaravelFunLab\Events\CatalogMutated($entityType, $model, $wasCreated, $actor));
+    }
+
+    /**
+     * Delegate to the matching setup helper. Extracted from setup() so the
+     * audit event fires in exactly one place after the mutation lands.
+     *
+     * @param  array<string, mixed>  $validated
+     */
+    protected function dispatchSetup(string $normalizedType, array $validated): Model
+    {
         return match ($normalizedType) {
             'gamed-metric' => $this->setupGamedMetric(
                 $validated['slug'] ?? null,

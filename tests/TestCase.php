@@ -70,10 +70,34 @@ abstract class TestCase extends Orchestra
             'prefix' => '',
         ]);
 
+        // Use array cache so the `throttle:lfl-writes` rate limiter doesn't
+        // require a `cache` DB table (Orchestra Testbench default is `database`).
+        $app['config']->set('cache.default', 'array');
+
         // LFL config defaults
         $app['config']->set('lfl.table_prefix', 'lfl_');
         $app['config']->set('lfl.migrations', true);
         $app['config']->set('lfl.events.dispatch', true);
+
+        // Test-friendly API defaults:
+        //  - writes=true so feature tests can exercise POST endpoints
+        //  - allow_setup_over_http=true so catalog POSTs are reachable
+        //  - auth.middleware=NoopMiddleware so the boot-time sanity check
+        //    in LFLServiceProvider passes — the actual auth layer is a
+        //    consumer concern that tests simulate with ->actingAs()
+        //  - awardables includes both fixture User types
+        //  - authorize.allow_missing=true so writes only require an
+        //    authenticated request (no specific callable); individual tests
+        //    that need deny-by-default behavior override this
+        $app['config']->set('lfl.api.enabled', true);
+        $app['config']->set('lfl.api.writes', true);
+        $app['config']->set('lfl.api.allow_setup_over_http', true);
+        $app['config']->set('lfl.api.auth.middleware', \LaravelFunLab\Tests\Fixtures\NoopMiddleware::class);
+        $app['config']->set('lfl.awardables', [
+            \LaravelFunLab\Tests\Fixtures\User::class,
+            \LaravelFunLab\Tests\Fixtures\AuthUser::class,
+        ]);
+        $app['config']->set('lfl.authorize.allow_missing', true);
     }
 
     /**

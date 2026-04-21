@@ -4,8 +4,11 @@ declare(strict_types=1);
 
 namespace LaravelFunLab;
 
+use Illuminate\Cache\RateLimiting\Limit;
+use Illuminate\Http\Request;
 use Illuminate\Support\Arr;
 use Illuminate\Support\Facades\Event;
+use Illuminate\Support\Facades\RateLimiter;
 use Illuminate\Support\ServiceProvider;
 use LaravelFunLab\Console\Commands\InstallCommand;
 use LaravelFunLab\Contracts\AnalyticsServiceContract;
@@ -14,6 +17,7 @@ use LaravelFunLab\Contracts\LeaderboardServiceContract;
 use LaravelFunLab\Listeners\EventLogSubscriber;
 use LaravelFunLab\Registries\AwardTypeRegistry;
 use LaravelFunLab\Services\AwardEngine;
+use RuntimeException;
 
 /**
  * Laravel Fun Lab Service Provider
@@ -73,13 +77,78 @@ class LFLServiceProvider extends ServiceProvider
      */
     public function boot(): void
     {
+        $this->assertWriteConfigIsSafe();
         $this->registerAwardTypes();
         $this->registerCommands();
         $this->registerPublishables();
         $this->registerMigrations();
+        $this->registerRateLimiters();
         $this->registerRoutes();
         $this->registerViews();
         $this->registerEventSubscribers();
+        $this->registerBroadcastChannels();
+    }
+
+    /**
+     * Refuse to boot when writes are enabled but no auth middleware is wired.
+     *
+     * Without this guard, every POST endpoint (awards, grants, opt-in/out,
+     * catalog setup) would be publicly callable. That's almost always a
+     * configuration mistake — surface it loudly.
+     */
+    protected function assertWriteConfigIsSafe(): void
+    {
+        if (! config('lfl.api.enabled', true)) {
+            return;
+        }
+
+        if (! config('lfl.api.writes', false)) {
+            return;
+        }
+
+        $middleware = config('lfl.api.auth.middleware');
+        if ($middleware === null || $middleware === '') {
+            throw new RuntimeException(
+                'LFL refuses to register write endpoints: config(lfl.api.writes)=true '
+                .'but config(lfl.api.auth.middleware) is null. Set '
+                .'LFL_API_AUTH_MIDDLEWARE (e.g. "auth:sanctum") or disable writes '
+                .'with LFL_API_WRITES=false.'
+            );
+        }
+    }
+
+    /**
+     * Register the `lfl-writes` named rate limiter used by write routes.
+     */
+    protected function registerRateLimiters(): void
+    {
+        $perMinute = (int) config('lfl.api.rate_limit.writes_per_minute', 60);
+
+        RateLimiter::for('lfl-writes', function (Request $request) use ($perMinute) {
+            $key = $request->user()?->getAuthIdentifier() ?? $request->ip();
+
+            return Limit::perMinute($perMinute)->by((string) $key);
+        });
+    }
+
+    /**
+     * Register package broadcast channel authorizations.
+     *
+     * Only loaded when opt-in broadcasting is enabled via config. LFL does not
+     * install a broadcasting driver — the consumer configures Reverb, Pusher,
+     * or similar at the application layer.
+     */
+    protected function registerBroadcastChannels(): void
+    {
+        if (! config('lfl.events.broadcast', false)) {
+            return;
+        }
+
+        if (! file_exists($path = __DIR__.'/../routes/channels.php')) {
+            return;
+        }
+
+        require $path;
     }
 
     /**
@@ -147,11 +216,17 @@ class LFLServiceProvider extends ServiceProvider
             __DIR__.'/../resources/views' => resource_path('views/vendor/lfl'),
         ], 'lfl-views');
 
+        // Publish OpenAPI spec so consumers can serve a local copy
+        $this->publishes([
+            __DIR__.'/../resources/openapi.yaml' => resource_path('openapi/lfl.yaml'),
+        ], 'lfl-openapi');
+
         // Publish all assets at once
         $this->publishes([
             __DIR__.'/../config/lfl.php' => config_path('lfl.php'),
             __DIR__.'/../database/migrations' => database_path('migrations'),
             __DIR__.'/../resources/views' => resource_path('views/vendor/lfl'),
+            __DIR__.'/../resources/openapi.yaml' => resource_path('openapi/lfl.yaml'),
         ], 'lfl');
     }
 

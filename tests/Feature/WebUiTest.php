@@ -48,8 +48,8 @@ describe('Web UI Routes', function () {
             $profile1 = $user1->getProfile();
             $profile2 = $user2->getProfile();
 
-            $profile1->update(['total_xp' => 200]);
-            $profile2->update(['total_xp' => 100]);
+            $profile1->setAggregates(['total_xp' => 200]);
+            $profile2->setAggregates(['total_xp' => 100]);
 
             $response = $this->get('/lfl/leaderboards/'.urlencode(User::class));
 
@@ -62,7 +62,7 @@ describe('Web UI Routes', function () {
         it('supports filtering by metric', function () {
             $user = User::create(['name' => 'User', 'email' => 'user@example.com']);
             $profile = $user->getProfile();
-            $profile->update(['achievement_count' => 5]);
+            $profile->setAggregates(['achievement_count' => 5]);
 
             $response = $this->get('/lfl/leaderboards/'.urlencode(User::class).'?by=achievements');
 
@@ -77,7 +77,7 @@ describe('Web UI Routes', function () {
         it('displays profile page', function () {
             $user = User::create(['name' => 'Test User', 'email' => 'test@example.com']);
             $profile = $user->getProfile();
-            $profile->update([
+            $profile->setAggregates([
                 'total_xp' => 150,
                 'achievement_count' => 3,
                 'prize_count' => 2,

@@ -5,6 +5,8 @@ declare(strict_types=1);
 namespace LaravelFunLab\Events;
 
 use Illuminate\Broadcasting\InteractsWithSockets;
+use Illuminate\Broadcasting\PrivateChannel;
+use Illuminate\Contracts\Broadcasting\ShouldBroadcast;
 use Illuminate\Database\Eloquent\Model;
 use Illuminate\Foundation\Events\Dispatchable;
 use Illuminate\Queue\SerializesModels;
@@ -17,8 +19,12 @@ use LaravelFunLab\Models\PrizeGrant;
  *
  * Dispatched whenever a prize is awarded to an entity.
  * Contains full context for prize fulfillment and analytics.
+ *
+ * Broadcasts on private channel `lfl.profile.{awardable_type}.{awardable_id}`
+ * when config('lfl.events.broadcast') is true. Transport driver is the
+ * consumer's responsibility.
  */
-class PrizeAwarded implements LflEvent
+class PrizeAwarded implements LflEvent, ShouldBroadcast
 {
     use Dispatchable, InteractsWithSockets, SerializesModels;
 
@@ -67,6 +73,48 @@ class PrizeAwarded implements LflEvent
     public function getSource(): ?string
     {
         return $this->source;
+    }
+
+    public function broadcastWhen(): bool
+    {
+        return (bool) config('lfl.events.broadcast', false);
+    }
+
+    /**
+     * @return array<int, PrivateChannel>
+     */
+    public function broadcastOn(): array
+    {
+        $type = str_replace('\\', '.', get_class($this->recipient));
+        $id = $this->recipient->getKey();
+
+        return [new PrivateChannel("lfl.profile.{$type}.{$id}")];
+    }
+
+    public function broadcastAs(): string
+    {
+        return 'prize.awarded';
+    }
+
+    /**
+     * @return array<string, mixed>
+     */
+    public function broadcastWith(): array
+    {
+        $grant = $this->award instanceof PrizeGrant ? $this->award : null;
+
+        return [
+            'grant_type' => 'prize',
+            'id' => $this->award->id ?? null,
+            'profile_id' => $grant?->profile_id,
+            'prize_id' => $grant?->prize_id,
+            'prize_slug' => $grant?->prize?->slug,
+            'prize_name' => $grant?->prize?->name,
+            'status' => $grant?->status?->value,
+            'reason' => $this->reason,
+            'source' => $this->source,
+            'granted_at' => $grant?->granted_at?->toIso8601String(),
+        ];
     }
 
     /**

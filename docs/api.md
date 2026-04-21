@@ -1083,31 +1083,53 @@ AwardType::Achievement;
 
 ## REST API Endpoints
 
-When the API layer is enabled (`config('lfl.api.enabled') => true`), LFL provides REST API endpoints for accessing gamification data.
+When the API layer is enabled (`config('lfl.api.enabled') => true`), LFL exposes REST endpoints for accessing and mutating gamification state.
 
 ### Base URL
 
-All API endpoints are prefixed with the configured API prefix (default: `api/lfl`).
+All endpoints are prefixed with the configured API prefix (default: `api/lfl`). A machine-readable OpenAPI 3.0 spec is available at `/api/lfl/openapi.json` and committed at `packages/laravel-fun-lab/resources/openapi.yaml`.
 
-### Profile API
+### Authentication contract
 
-#### `GET /api/lfl/profiles/{type}/{id}`
+LFL ships **no authentication**. Point `config('lfl.api.auth.middleware')` at any Laravel middleware that resolves `auth()->user()` to an Awardable model (`auth:sanctum`, `auth:api`, a custom guard, etc.). Leave it `null` for a fully public API. The `/me/*` endpoints require this middleware to be set; all other endpoints honor whatever middleware stack you configure.
 
-Get profile data for a specific awardable entity.
+```php
+'api' => [
+    'enabled' => true,
+    'writes' => true,
+    'auth' => [
+        'middleware' => 'auth:sanctum',
+    ],
+],
+```
 
-**Parameters:**
-- `type` - The awardable type (e.g., `App\Models\User`)
-- `id` - The awardable ID
+### Write gate
+
+All mutation endpoints (POST) are collectively gated by `config('lfl.api.writes')` (default: `true`). Set to `false` for read-only API deployments — the routes are not registered and return 404.
+
+### Spec
+
+#### `GET /api/lfl/openapi.json`
+
+Returns the OpenAPI 3.0 spec as JSON. Useful for generating typed clients.
+
+### Current user (requires auth)
+
+The authenticated model must use the `Awardable` trait; otherwise a 422 is returned.
+
+#### `GET /api/lfl/me/profile`
 
 **Response:**
 ```json
 {
   "data": {
-    "id": "01abc...",
+    "id": 1,
     "awardable_type": "App\\Models\\User",
     "awardable_id": 1,
     "is_opted_in": true,
-    "total_points": 1250.0,
+    "display_preferences": null,
+    "visibility_settings": null,
+    "total_xp": 1250,
     "achievement_count": 5,
     "prize_count": 2,
     "last_activity_at": "2024-12-30T12:00:00Z",
@@ -1117,17 +1139,132 @@ Get profile data for a specific awardable entity.
 }
 ```
 
-### Leaderboard API
+#### `GET /api/lfl/me/achievements`
+
+Returns achievements granted to the authenticated user. Response shape matches `GET /achievements`.
+
+#### `GET /api/lfl/me/awards`
+
+Returns paginated `ProfileMetric` records for the authenticated user. Response shape matches `GET /awards/{type}/{id}`.
+
+### Profiles
+
+#### `GET /api/lfl/profiles/{type}/{id}`
+
+Get profile data for a specific awardable entity.
+
+**Parameters:**
+- `type` - Fully qualified class name (e.g., `App\Models\User`)
+- `id` - Awardable ID
+
+**Response:** See `/me/profile` (same shape).
+
+#### `POST /api/lfl/profiles/{type}/{id}/opt-in`
+
+Opt the awardable back into gamification. Returns the updated profile resource.
+
+#### `POST /api/lfl/profiles/{type}/{id}/opt-out`
+
+Opt the awardable out of gamification. Returns the updated profile resource.
+
+### Awards (XP)
+
+#### `GET /api/lfl/awards/{type}/{id}`
+
+Paginated XP records (ProfileMetrics) for a specific awardable.
+
+**Query Parameters:**
+- `metric_slug` - Filter by GamedMetric slug
+- `per_page` (default: 15)
+- `page` (default: 1)
+
+**Response:**
+```json
+{
+  "data": [
+    {
+      "id": 1,
+      "profile_id": 1,
+      "gamed_metric_id": 1,
+      "gamed_metric_slug": "combat-xp",
+      "gamed_metric_name": "Combat XP",
+      "total_xp": 500,
+      "current_level": 3,
+      "created_at": "2024-12-30T12:00:00Z",
+      "updated_at": "2024-12-30T12:00:00Z"
+    }
+  ],
+  "profile": { "id": 1, "total_xp": 500, "achievement_count": 5, "prize_count": 2, "is_opted_in": true },
+  "meta": { "current_page": 1, "per_page": 15, "total": 1 },
+  "links": { "first": "...", "last": "...", "prev": null, "next": null }
+}
+```
+
+#### `POST /api/lfl/awards`
+
+Award XP to an awardable entity. Wraps `LFL::award($metric)->to()->amount()->because()->from()->withMeta()->save()`.
+
+**Body:**
+```json
+{
+  "metric_slug": "combat-xp",
+  "awardable_type": "App\\Models\\User",
+  "awardable_id": 1,
+  "amount": 50,
+  "reason": "defeated boss",
+  "source": "combat-system",
+  "meta": {}
+}
+```
+
+**Response:** The updated ProfileMetric as an Award resource.
+
+### Grants (Achievements + Prizes)
+
+#### `POST /api/lfl/grants`
+
+Grant an Achievement or Prize. The slug auto-resolves to the correct entity.
+
+**Body:**
+```json
+{
+  "slug": "first-login",
+  "awardable_type": "App\\Models\\User",
+  "awardable_id": 1,
+  "reason": "completed onboarding",
+  "source": "registration-flow"
+}
+```
+
+**Response:**
+```json
+{
+  "data": {
+    "grant_type": "achievement",
+    "id": 1,
+    "profile_id": 1,
+    "achievement_id": 1,
+    "achievement_slug": "first-login",
+    "achievement_name": "First Login",
+    "reason": "completed onboarding",
+    "source": "registration-flow",
+    "meta": null,
+    "granted_at": "2024-12-30T12:00:00Z"
+  }
+}
+```
+
+For prizes the `grant_type` is `"prize"` and fields include `prize_id`, `prize_slug`, `prize_name`, `status`.
+
+### Leaderboards
 
 #### `GET /api/lfl/leaderboards/{type}`
 
-Get leaderboard data for a specific awardable type.
-
 **Query Parameters:**
-- `by` - Sort metric: `'points'`, `'achievements'`, `'prizes'` (default: `'points'`)
-- `period` - Time period: `'daily'`, `'weekly'`, `'monthly'`, `'all-time'` (default: `'all-time'`)
-- `per_page` - Items per page (default: 15)
-- `page` - Page number (default: 1)
+- `by` - `xp`, `achievements`, `prizes` (default: `xp`)
+- `period` - `daily`, `weekly`, `monthly`, `all-time` (default: `all-time`)
+- `per_page` (default: 15)
+- `page` (default: 1)
 
 **Response:**
 ```json
@@ -1135,93 +1272,105 @@ Get leaderboard data for a specific awardable type.
   "data": [
     {
       "rank": 1,
-      "id": "01abc...",
+      "id": 1,
       "awardable_type": "App\\Models\\User",
       "awardable_id": 1,
-      "total_points": 5000.0,
+      "total_xp": 5000,
       "achievement_count": 10,
       "prize_count": 3,
       "last_activity_at": "2024-12-30T12:00:00Z"
     }
   ],
-  "meta": {
-    "current_page": 1,
-    "per_page": 15,
-    "total": 100
-  },
-  "links": {
-    "first": "...",
-    "last": "...",
-    "prev": null,
-    "next": "..."
-  }
+  "meta": { "current_page": 1, "per_page": 15, "total": 100 },
+  "links": { "first": "...", "last": "...", "prev": null, "next": "..." }
 }
 ```
 
-### Achievements API
+### Catalog
 
 #### `GET /api/lfl/achievements`
 
-Get all available achievements.
+List all available achievements.
 
-**Response:**
+**Query Parameters:**
+- `awardable_type` - Filter by targeted type
+- `active` (default: true)
+
+#### `POST /api/lfl/achievements`
+
+Create an achievement. Wraps `LFL::setup('achievement', ...)`.
+
+**Body:**
 ```json
 {
-  "data": [
-    {
-      "id": 1,
-      "slug": "first-login",
-      "name": "First Login",
-      "description": "Welcome! You've logged in for the first time.",
-      "icon": "⭐",
-      "is_active": true
-    }
-  ]
+  "slug": "first-login",
+  "name": "First Login",
+  "description": "Welcome!",
+  "icon": "star",
+  "for": "App\\Models\\User",
+  "active": true
 }
 ```
 
-### Awards API
+#### `GET /api/lfl/gamed-metrics`
 
-#### `GET /api/lfl/awards/{type}/{id}`
+List GamedMetrics. Supports `?active=true|false`.
 
-Get all awards for a specific awardable entity.
+#### `POST /api/lfl/gamed-metrics`
 
-**Parameters:**
-- `type` - The awardable type (e.g., `App\Models\User`)
-- `id` - The awardable ID
+Create a GamedMetric. Wraps `LFL::setup('gamed-metric', ...)`.
 
-**Response:**
+#### `GET /api/lfl/metric-levels/{metric}`
+
+List MetricLevels for a given GamedMetric slug.
+
+#### `POST /api/lfl/metric-levels`
+
+Create a MetricLevel threshold. Wraps `LFL::setup('metric-level', ...)`.
+
+**Body:**
 ```json
 {
-  "data": [
-    {
-      "id": 1,
-      "type": "points",
-      "amount": 50,
-      "reason": "Completed task",
-      "source": "task-system",
-      "created_at": "2024-12-30T12:00:00Z"
-    }
-  ]
+  "metric": "combat-xp",
+  "level": 3,
+  "xp": 500,
+  "name": "Warrior"
 }
 ```
 
-### Authentication
+#### `GET /api/lfl/prizes`
 
-API endpoints can be protected with authentication middleware. Configure this in `config/lfl.php`:
+List active prizes. Supports `?active=false`.
 
-```php
-'api' => [
-    'enabled' => true,
-    'auth' => [
-        'middleware' => 'auth:sanctum', // or null for no auth
-    ],
-],
+#### `POST /api/lfl/prizes`
+
+Create a Prize. Wraps `LFL::setup('prize', ...)`.
+
+### Error shapes
+
+Validation errors return HTTP 422:
+```json
+{
+  "message": "The amount field must be an integer.",
+  "errors": { "amount": ["The amount field must be an integer."] }
+}
 ```
+
+Not-found and misconfiguration errors return HTTP 404 or 422 with:
+```json
+{ "message": "Awardable not found for App\\Models\\User#99." }
+```
+
+### Related
+
+- [React / SPA integration](react.md)
+- [Broadcasting](broadcasting.md)
 
 ## Next Steps
 
 - [Usage Guide](usage.md) - Practical examples and patterns
 - [Configuration Reference](configuration.md) - All configuration options
 - [Extension Guide](extending.md) - Custom implementations
+- [React / SPA integration](react.md) - Consuming the API from a frontend
+- [Broadcasting](broadcasting.md) - Real-time event streaming
 

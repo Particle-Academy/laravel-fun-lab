@@ -187,8 +187,11 @@ $leaders = LFL::leaderboard()
 ## Documentation
 
 - **[Usage Guide](docs/usage.md)** - Examples and patterns
-- **[API Reference](docs/api.md)** - Complete API documentation
+- **[API Reference](docs/api.md)** - PHP facade + REST API documentation
+- **[React / SPA Integration](docs/react.md)** - Auth contract, CORS, Echo, typed clients
+- **[Broadcasting](docs/broadcasting.md)** - Real-time event channels and payloads
 - **[Configuration](docs/configuration.md)** - All configuration options
+- **[Extending](docs/extending.md)** - Custom implementations and hooks
 
 ## Requirements
 

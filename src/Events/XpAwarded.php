@@ -5,6 +5,8 @@ declare(strict_types=1);
 namespace LaravelFunLab\Events;
 
 use Illuminate\Broadcasting\InteractsWithSockets;
+use Illuminate\Broadcasting\PrivateChannel;
+use Illuminate\Contracts\Broadcasting\ShouldBroadcast;
 use Illuminate\Database\Eloquent\Model;
 use Illuminate\Foundation\Events\Dispatchable;
 use Illuminate\Queue\SerializesModels;
@@ -18,8 +20,12 @@ use LaravelFunLab\Models\ProfileMetric;
  *
  * Dispatched whenever XP is awarded to a GamedMetric for an entity.
  * Contains full context including the metric, amount, and profile record.
+ *
+ * Broadcasts on the private channel `lfl.profile.{awardable_type}.{awardable_id}`
+ * (backslashes in type replaced with dots) when config('lfl.events.broadcast') is true.
+ * The consumer must install and configure a broadcasting driver — LFL ships none.
  */
-class XpAwarded implements LflEvent
+class XpAwarded implements LflEvent, ShouldBroadcast
 {
     use Dispatchable, InteractsWithSockets, SerializesModels;
 
@@ -104,6 +110,53 @@ class XpAwarded implements LflEvent
     public function getCurrentLevel(): int
     {
         return $this->profileMetric->current_level;
+    }
+
+    /**
+     * Opt-in broadcasting — consumer configures a driver and flips the config flag.
+     */
+    public function broadcastWhen(): bool
+    {
+        return (bool) config('lfl.events.broadcast', false);
+    }
+
+    /**
+     * @return array<int, PrivateChannel>
+     */
+    public function broadcastOn(): array
+    {
+        $type = str_replace('\\', '.', get_class($this->recipient));
+        $id = $this->recipient->getKey();
+
+        return [new PrivateChannel("lfl.profile.{$type}.{$id}")];
+    }
+
+    public function broadcastAs(): string
+    {
+        return 'xp.awarded';
+    }
+
+    /**
+     * Payload shape matches the AwardResource so SDK consumers see one
+     * schema on both REST and Echo.
+     *
+     * @return array<string, mixed>
+     */
+    public function broadcastWith(): array
+    {
+        return [
+            'id' => $this->profileMetric->id,
+            'profile_id' => $this->profileMetric->profile_id,
+            'gamed_metric_id' => $this->gamedMetric->id,
+            'gamed_metric_slug' => $this->gamedMetric->slug,
+            'gamed_metric_name' => $this->gamedMetric->name,
+            'amount' => $this->amount,
+            'total_xp' => (int) $this->profileMetric->total_xp,
+            'current_level' => (int) $this->profileMetric->current_level,
+            'reason' => $this->reason,
+            'source' => $this->source,
+            'occurred_at' => now()->toIso8601String(),
+        ];
     }
 
     /**

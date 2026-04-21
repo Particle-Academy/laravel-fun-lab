@@ -14,8 +14,14 @@ declare(strict_types=1);
 */
 
 use LaravelFunLab\Tests\TestCase;
+use LaravelFunLab\Tests\WritesDisabledTestCase;
 
 uses(TestCase::class)->in('Unit', 'Feature');
+
+// Writes-gate tests need config('lfl.api.writes') set to false BEFORE the
+// LFLServiceProvider boots, so they use a dedicated TestCase subclass and
+// live in their own folder (Pest binds TestCase per folder, not per file).
+uses(WritesDisabledTestCase::class)->in('ApiGate');
 
 /*
 |--------------------------------------------------------------------------

@@ -5,25 +5,23 @@ declare(strict_types=1);
 namespace LaravelFunLab\Http\Controllers;
 
 use Illuminate\Http\JsonResponse;
+use Illuminate\Http\Request;
+use LaravelFunLab\Http\Resources\ProfileResource;
 use LaravelFunLab\Models\Profile;
 
 /**
  * ProfileController
  *
- * API controller for retrieving profile data by awardable type and ID.
- * Provides access to engagement profiles with opt-in status, metrics, and preferences.
+ * GET /profiles/{type}/{id} — profile by awardable polymorph.
+ *
+ * Respects Profile::visibility_settings:
+ *   - null  or []               → public (default, backward-compatible)
+ *   - ['public' => false]       → deny anonymous reads with 403; require that
+ *                                 the authenticated user own the profile
  */
 class ProfileController extends Controller
 {
-    /**
-     * Get profile data for a specific awardable entity.
-     *
-     * GET /profiles/{type}/{id}
-     *
-     * @param  string  $type  The awardable type (e.g., 'App\Models\User')
-     * @param  int  $id  The awardable ID
-     */
-    public function show(string $type, int $id): JsonResponse
+    public function show(Request $request, string $type, int|string $id): JsonResponse|ProfileResource
     {
         $profile = Profile::query()
             ->where('awardable_type', $type)
@@ -31,26 +29,40 @@ class ProfileController extends Controller
             ->first();
 
         if ($profile === null) {
-            return response()->json([
-                'message' => 'Profile not found',
-            ], 404);
+            return response()->json(['message' => 'Profile not found'], 404);
         }
 
-        return response()->json([
-            'data' => [
-                'id' => $profile->id,
-                'awardable_type' => $profile->awardable_type,
-                'awardable_id' => $profile->awardable_id,
-                'is_opted_in' => $profile->is_opted_in,
-                'display_preferences' => $profile->display_preferences,
-                'visibility_settings' => $profile->visibility_settings,
-                'total_xp' => (int) $profile->total_xp,
-                'achievement_count' => $profile->achievement_count,
-                'prize_count' => $profile->prize_count,
-                'last_activity_at' => $profile->last_activity_at?->toIso8601String(),
-                'created_at' => $profile->created_at->toIso8601String(),
-                'updated_at' => $profile->updated_at->toIso8601String(),
-            ],
-        ]);
+        if (! $this->isVisibleTo($profile, $request)) {
+            return response()->json([
+                'message' => 'This profile is private.',
+            ], 403);
+        }
+
+        return new ProfileResource($profile);
+    }
+
+    /**
+     * Visibility gate.
+     *
+     * The profile owner can always see their own profile. Non-owners can see
+     * it only if visibility_settings.public !== false (default true).
+     */
+    protected function isVisibleTo(Profile $profile, Request $request): bool
+    {
+        $settings = $profile->visibility_settings ?? [];
+        $public = ! array_key_exists('public', $settings) || (bool) $settings['public'];
+
+        if ($public) {
+            return true;
+        }
+
+        $user = $request->user();
+        if ($user === null) {
+            return false;
+        }
+
+        // Owner exception — the profile's awardable is the same user.
+        return get_class($user) === $profile->awardable_type
+            && (string) $user->getKey() === (string) $profile->awardable_id;
     }
 }

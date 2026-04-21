@@ -7,6 +7,72 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [0.4.0] - 2026-04-21
+
+> ⚠️  **Breaking changes — read the migration notes below before upgrading.**
+
+### Breaking
+
+- `config('lfl.api.writes')` default flipped from `true` to `false`. Consumers relying on write endpoints must explicitly set `LFL_API_WRITES=true` (or override the config).
+- Catalog-setup POSTs (`/gamed-metrics`, `/metric-levels`, `/achievements`, `/prizes`) are now gated by a second flag, `config('lfl.api.allow_setup_over_http')`, defaulting to `false`.
+- Write endpoints now require an authorization callable via `LaravelFunLab\Http\AuthorizerRegistry` (or a FQCN in `config('lfl.authorize.*')`). No callable + `allow_missing=false` → 403. Wire your policy in a service provider's `boot()`.
+- `config('lfl.awardables')` must explicitly list every model class LFL is permitted to treat as an awardable over HTTP. Empty allowlist → all HTTP writes return 422.
+- `LFLServiceProvider::boot()` throws `RuntimeException` when `api.writes=true` AND `api.auth.middleware=null` (previously a silent footgun). Set `LFL_API_AUTH_MIDDLEWARE=auth:sanctum` or similar.
+- `Profile::$fillable` no longer includes `total_xp`, `achievement_count`, `prize_count`, `last_activity_at`. Code that does `$profile->update(['total_xp' => X])` now silently drops those fields. Use the new `Profile::setAggregates([...])` helper for internal/test/migration call-sites.
+- `AwardXpBuilder::save()` now throws `LaravelFunLab\Exceptions\AwardRejectedException` (subclass of `InvalidArgumentException`) for:
+  - amounts above `config('lfl.defaults.max_points_per_action')` (new default: 10000),
+  - awards rejected by any registered `AwardValidationPipeline` step (XP path was bypassing the pipeline before),
+  - opted-out recipients (matching existing Grant behavior).
+- `AwardXpRequest` validation adds a `max` rule derived from the same cap; oversized amounts return 422 before reaching the service layer.
+
+### Security
+
+- **Secure-by-default writes** (C1). See Breaking section above. `LFLServiceProvider::boot()` throws when writes are enabled without auth middleware — preventing the "enabled writes but no auth" footgun.
+
+- **Secure-by-default writes** (C1). `config('lfl.api.writes')` now defaults to `false`. `LFLServiceProvider::boot()` throws `RuntimeException` when `writes=true` and `config('lfl.api.auth.middleware')` is `null` — preventing the "enabled writes but no auth" footgun.
+- **Awardable allowlist** (C3). `config('lfl.awardables')` must explicitly list the model classes LFL is permitted to treat as awardables over HTTP. All write controllers + the broadcast channel authorization reject unlisted types BEFORE `class_exists()` triggers the autoloader, closing the attacker-controlled class-name reconnaissance vector.
+- **Authorization hook with deny-by-default** (C2). New `config('lfl.authorize.{award,grant,opt,setup}')` callables run before every write. When `null`, writes return 403 (override with `allow_missing=true` for dev). Each callable receives `(?Model $user, array $context)`.
+- **XP cap + validation pipeline + opt-out** (H1/H2). `AwardXpBuilder::save()` now invokes `AwardValidationPipeline::validate()` (matching `GrantBuilder`) and rejects amounts above `config('lfl.defaults.max_points_per_action')` (new default: 10000). `GamedMetricService::awardXp()` gates on `Profile::isOptedOut()` to match grant behavior. Rejection surfaces as `AwardRejectedException` with a `kind` discriminator.
+- **Catalog audit trail** (H3). New `CatalogMutated` event dispatched by `AwardEngine::setup()`. Logged by `EventLogSubscriber` so every upsert-by-slug has a trace (actor, entity type, was_created, timestamp).
+- **Setup-over-HTTP is opt-in** (H3). `POST /gamed-metrics`, `/achievements`, `/prizes`, `/metric-levels` are now gated by `config('lfl.api.allow_setup_over_http')` (default `false`) in addition to the general `api.writes` flag.
+- **Visibility settings enforced** (H4). `ProfileController::show` denies anonymous reads with 403 when `Profile::visibility_settings.public === false`. Owner can still read their own profile.
+- **Mass-assignment hardening** (M1). `Profile::$fillable` no longer includes `total_xp`, `achievement_count`, `prize_count`, `last_activity_at`. Internal helpers (`incrementXp`, `touchActivity`, `recalculateAggregations`) use `forceFill` or `increment` to bypass — consumer code cannot forge XP via `Profile::update($request->all())`.
+- **Rate limit on writes** (M2). New `throttle:lfl-writes` named limiter (60/min per user or IP, configurable via `LFL_API_WRITES_PER_MINUTE`) applied to every POST endpoint.
+- **Broadcasting docs: payload trust model** (M3). `docs/broadcasting.md` now explains that `reason`/`source`/`meta` fields in WebSocket payloads are user-supplied and must be sanitized by consumers before rendering.
+
+### Added
+
+- **REST API expansion for SPA consumers**
+  - Write endpoints: `POST /awards`, `POST /grants`, `POST /profiles/{type}/{id}/opt-in`, `POST /profiles/{type}/{id}/opt-out`, gated by the new `config('lfl.api.writes')` flag
+  - Current-user convenience endpoints: `GET /me/profile`, `GET /me/achievements`, `GET /me/awards` (require consumer-configured auth middleware)
+  - Catalog endpoints: `GET /gamed-metrics`, `GET /metric-levels/{metric}`, `GET /prizes`
+  - Setup-over-HTTP endpoints for admin flows: `POST /gamed-metrics`, `POST /metric-levels`, `POST /achievements`, `POST /prizes`
+  - Hand-rolled OpenAPI 3.0 spec at `resources/openapi.yaml`, served as JSON at `GET /openapi.json`, publishable via `vendor:publish --tag=lfl-openapi`
+- **Opt-in broadcasting**
+  - `XpAwarded`, `AchievementUnlocked`, `PrizeAwarded` now implement `ShouldBroadcast`, gated by the new `config('lfl.events.broadcast')` flag (default `false`)
+  - Private channel naming: `private-lfl.profile.{AwardableType}.{id}` (backslashes in type replaced with dots)
+  - Channel authorization registered automatically when broadcasting is enabled
+  - `broadcastAs` event names: `xp.awarded`, `achievement.unlocked`, `prize.awarded`
+  - `broadcastWith` payloads match the corresponding REST Resource shape so clients see one schema across REST and WebSockets
+- **New docs**: `docs/react.md` (SPA integration), `docs/broadcasting.md` (real-time events)
+
+### Changed
+
+- **Eloquent API Resources refactor**
+  - All API controllers now return Eloquent API Resources (`ProfileResource`, `LeaderboardEntryResource`, `AchievementResource`, `AwardResource`, `AwardGrantResource`, `GamedMetricResource`, `MetricLevelResource`, `PrizeResource`)
+  - Unified `{ data, meta?, links?, profile? }` envelope across all endpoints
+- **Config**
+  - `config('lfl.api.writes')` added (default: `true`)
+  - `config('lfl.events.broadcast')` added (default: `false`)
+  - Inline comments clarify that `config('lfl.api.auth.middleware')` is the consumer's contract — LFL ships no auth implementation
+- **Framework-only boundary**
+  - Reinforced: LFL ships no authentication, no AI/ML, no transport driver. Consumers wrap their own security and infrastructure.
+
+### Added (deps)
+
+- `illuminate/http`, `illuminate/routing`, `illuminate/validation` made explicit (previously resolved via `illuminate/support`)
+- `symfony/yaml` for serving the OpenAPI spec as JSON
+
 ## [0.3.1] - 2025-01-17
 
 ### Fixed

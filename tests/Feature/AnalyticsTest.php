@@ -183,7 +183,7 @@ describe('Active Users Analytics', function () {
 
         // Update one profile to be old
         $profile = Profile::first();
-        $profile->update(['last_activity_at' => Carbon::now()->subDays(10)]);
+        $profile->setAggregates(['last_activity_at' => Carbon::now()->subDays(10)]);
 
         $recentlyActive = Profile::where('last_activity_at', '>=', Carbon::now()->startOfWeek())->count();
 

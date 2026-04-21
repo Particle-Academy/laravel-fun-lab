@@ -8,8 +8,10 @@ use Illuminate\Events\Dispatcher;
 use LaravelFunLab\Contracts\LflEvent;
 use LaravelFunLab\Events\AchievementUnlocked;
 use LaravelFunLab\Events\BadgeAwarded;
+use LaravelFunLab\Events\CatalogMutated;
 use LaravelFunLab\Events\PointsAwarded;
 use LaravelFunLab\Events\PrizeAwarded;
+use LaravelFunLab\Events\XpAwarded;
 use LaravelFunLab\Models\EventLog;
 
 /**
@@ -53,6 +55,22 @@ class EventLogSubscriber
     }
 
     /**
+     * Handle an XpAwarded event (distinct from the deprecated PointsAwarded).
+     */
+    public function handleXpAwarded(XpAwarded $event): void
+    {
+        $this->logEvent($event);
+    }
+
+    /**
+     * Handle a CatalogMutated event — audit trail for LFL::setup() writes.
+     */
+    public function handleCatalogMutated(CatalogMutated $event): void
+    {
+        $this->logEvent($event);
+    }
+
+    /**
      * Log an LFL event to the EventLog model.
      */
     protected function logEvent(LflEvent $event): void
@@ -77,6 +95,8 @@ class EventLogSubscriber
             AchievementUnlocked::class => 'handleAchievementUnlocked',
             PrizeAwarded::class => 'handlePrizeAwarded',
             BadgeAwarded::class => 'handleBadgeAwarded',
+            XpAwarded::class => 'handleXpAwarded',
+            CatalogMutated::class => 'handleCatalogMutated',
         ];
     }
 }

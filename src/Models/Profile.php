@@ -39,16 +39,36 @@ class Profile extends Model
      *
      * @var list<string>
      */
+    /**
+     * Mass-assignable attributes.
+     *
+     * Aggregates (total_xp, achievement_count, prize_count, last_activity_at)
+     * are intentionally EXCLUDED to prevent XP forgery via `Profile::create()`
+     * or `update($request->all())`. Update these only via the helpers:
+     * incrementXp(), incrementAchievementCount(), incrementPrizeCount(),
+     * touchActivity(), recalculateAggregations(), setAggregates().
+     */
     protected $fillable = [
         'awardable_type',
         'awardable_id',
         'is_opted_in',
         'display_preferences',
         'visibility_settings',
-        'total_xp',
-        'achievement_count',
-        'prize_count',
-        'last_activity_at',
+    ];
+
+    /**
+     * Default attribute values applied before save. Ensures aggregates read
+     * as numeric 0 (not null) even on brand-new, unsaved Profile instances —
+     * the DB migration has DEFAULT 0 but PHP-side defaults are needed for
+     * code that reads aggregates before the first refresh.
+     *
+     * @var array<string, mixed>
+     */
+    protected $attributes = [
+        'is_opted_in' => true,
+        'total_xp' => 0,
+        'achievement_count' => 0,
+        'prize_count' => 0,
     ];
 
     /**
@@ -175,10 +195,13 @@ class Profile extends Model
 
     /**
      * Update the last activity timestamp.
+     *
+     * Uses forceFill to bypass the narrowed $fillable (aggregates are no
+     * longer mass-assignable — by design).
      */
     public function touchActivity(): bool
     {
-        return $this->update(['last_activity_at' => now()]);
+        return $this->forceFill(['last_activity_at' => now()])->save();
     }
 
     /**
@@ -254,14 +277,17 @@ class Profile extends Model
 
     /**
      * Recalculate all aggregated values from related metrics, achievements, and prizes.
+     *
+     * Uses forceFill to bypass the narrowed $fillable (aggregates are no
+     * longer mass-assignable — by design).
      */
     public function recalculateAggregations(): bool
     {
-        return $this->update([
+        return $this->forceFill([
             'total_xp' => $this->calculateTotalXp(),
             'achievement_count' => $this->calculateAchievementCount(),
             'prize_count' => $this->calculatePrizeCount(),
-        ]);
+        ])->save();
     }
 
     /**
@@ -292,5 +318,27 @@ class Profile extends Model
         $this->increment('prize_count');
 
         return true;
+    }
+
+    /**
+     * Explicitly set aggregate columns, bypassing $fillable.
+     *
+     * Aggregates are intentionally outside of mass-assignment to prevent
+     * XP forgery via untrusted request data. This helper is the sanctioned
+     * API for internal services, tests, and consumer code that syncs
+     * aggregates from an external source (e.g. data migration).
+     *
+     * @param  array<string, int|\DateTimeInterface|null>  $values
+     */
+    public function setAggregates(array $values): bool
+    {
+        $allowed = ['total_xp', 'achievement_count', 'prize_count', 'last_activity_at'];
+        $filtered = array_intersect_key($values, array_flip($allowed));
+
+        if ($filtered === []) {
+            return true;
+        }
+
+        return $this->forceFill($filtered)->save();
     }
 }
