@@ -247,7 +247,7 @@ class InstallCommand extends Command
         $this->components->bulletList([
             'Config: <comment>config/lfl.php</comment>',
             'Facade: <comment>use LaravelFunLab\Facades\LFL;</comment>',
-            'Docs: <comment>https://github.com/particleacademy/laravel-fun-lab</comment>',
+            'Docs: <comment>https://github.com/particle-academy/laravel-fun-lab</comment>',
         ]);
 
         $this->newLine();

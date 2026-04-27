@@ -7,6 +7,12 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+### Changed
+
+- Package renamed on Packagist from `particleacademy/laravel-fun-lab` to `particle-academy/laravel-fun-lab` to match the `particle-academy/*` namespace convention.
+- `composer.json` declares `replace: { "particleacademy/laravel-fun-lab": "self.version" }`, so existing consumers continue to install without changing their `require` line. The old Packagist entry will be marked abandoned with the new name as its replacement.
+- **Migration**: update your `composer.json` from `particleacademy/laravel-fun-lab` to `particle-academy/laravel-fun-lab` at your next convenience. No code changes required — namespaces (`LaravelFunLab\\`), service provider, and facade are unchanged.
+
 ## [0.4.0] - 2026-04-21
 
 > ⚠️  **Breaking changes — read the migration notes below before upgrading.**

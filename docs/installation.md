@@ -15,7 +15,7 @@ This guide covers installing Laravel Fun Lab in your Laravel application, includ
 Install the package using Composer:
 
 ```bash
-composer require particleacademy/laravel-fun-lab
+composer require particle-academy/laravel-fun-lab
 ```
 
 ### Step 2: Run the Installation Command

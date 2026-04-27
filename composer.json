@@ -1,5 +1,5 @@
 {
-    "name": "particleacademy/laravel-fun-lab",
+    "name": "particle-academy/laravel-fun-lab",
     "description": "Analytics-driven gamification layer for Laravel applications. Track user engagement through awards, achievements, and prizes.",
     "type": "library",
     "keywords": [
@@ -29,6 +29,9 @@
         "illuminate/support": "^11.0|^12.0",
         "illuminate/validation": "^11.0|^12.0",
         "symfony/yaml": "^6.0|^7.0"
+    },
+    "replace": {
+        "particleacademy/laravel-fun-lab": "self.version"
     },
     "require-dev": {
         "laravel/pint": "^1.26",
