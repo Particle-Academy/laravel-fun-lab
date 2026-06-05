@@ -4,9 +4,12 @@ declare(strict_types=1);
 
 namespace LaravelFunLab\Models;
 
+use Illuminate\Database\Eloquent\Builder;
+use Illuminate\Database\Eloquent\Collection;
 use Illuminate\Database\Eloquent\Model;
 use Illuminate\Database\Eloquent\Relations\BelongsToMany;
 use Illuminate\Database\Eloquent\Relations\HasMany;
+use Illuminate\Support\Carbon;
 
 /**
  * Achievement Model
@@ -22,10 +25,11 @@ use Illuminate\Database\Eloquent\Relations\HasMany;
  * @property string|null $awardable_type Target model type (null = universal)
  * @property array<string, mixed>|null $meta
  * @property bool $is_active
+ * @property bool $is_hidden
  * @property int $sort_order
- * @property \Illuminate\Support\Carbon $created_at
- * @property \Illuminate\Support\Carbon $updated_at
- * @property-read \Illuminate\Database\Eloquent\Collection<int, AchievementGrant> $grants
+ * @property Carbon $created_at
+ * @property Carbon $updated_at
+ * @property-read Collection<int, AchievementGrant> $grants
  */
 class Achievement extends Model
 {
@@ -42,6 +46,7 @@ class Achievement extends Model
         'awardable_type',
         'meta',
         'is_active',
+        'is_hidden',
         'sort_order',
     ];
 
@@ -63,6 +68,7 @@ class Achievement extends Model
         return [
             'meta' => 'array',
             'is_active' => 'boolean',
+            'is_hidden' => 'boolean',
             'sort_order' => 'integer',
         ];
     }
@@ -125,8 +131,8 @@ class Achievement extends Model
     /**
      * Scope to only active achievements.
      *
-     * @param  \Illuminate\Database\Eloquent\Builder<Achievement>  $query
-     * @return \Illuminate\Database\Eloquent\Builder<Achievement>
+     * @param  Builder<Achievement>  $query
+     * @return Builder<Achievement>
      */
     public function scopeActive($query)
     {
@@ -134,10 +140,34 @@ class Achievement extends Model
     }
 
     /**
+     * Scope to only NON-hidden achievements — the public catalog. Hidden
+     * ("secret"/Easter-egg) achievements are excluded until earned; combine
+     * with a query of the awardable's earned grants to reveal earned ones.
+     *
+     * @param  Builder<Achievement>  $query
+     * @return Builder<Achievement>
+     */
+    public function scopeVisible($query)
+    {
+        return $query->where('is_hidden', false);
+    }
+
+    /**
+     * Scope to only hidden ("secret") achievements.
+     *
+     * @param  Builder<Achievement>  $query
+     * @return Builder<Achievement>
+     */
+    public function scopeHidden($query)
+    {
+        return $query->where('is_hidden', true);
+    }
+
+    /**
      * Scope to filter by awardable type.
      *
-     * @param  \Illuminate\Database\Eloquent\Builder<Achievement>  $query
-     * @return \Illuminate\Database\Eloquent\Builder<Achievement>
+     * @param  Builder<Achievement>  $query
+     * @return Builder<Achievement>
      */
     public function scopeForAwardableType($query, ?string $awardableType)
     {
@@ -150,8 +180,8 @@ class Achievement extends Model
     /**
      * Scope to order by sort order.
      *
-     * @param  \Illuminate\Database\Eloquent\Builder<Achievement>  $query
-     * @return \Illuminate\Database\Eloquent\Builder<Achievement>
+     * @param  Builder<Achievement>  $query
+     * @return Builder<Achievement>
      */
     public function scopeOrdered($query)
     {

@@ -47,6 +47,7 @@ class SetupValidator
             'for' => ['required' => false, 'type' => 'string'],
             'metadata' => ['required' => false, 'type' => 'array'],
             'active' => ['required' => false, 'type' => 'bool'],
+            'hidden' => ['required' => false, 'type' => 'bool'],
             'order' => ['required' => false, 'type' => 'int'],
         ],
         'gamed-metric' => [

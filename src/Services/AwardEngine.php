@@ -12,6 +12,10 @@ use InvalidArgumentException;
 use LaravelFunLab\Contracts\AnalyticsServiceContract;
 use LaravelFunLab\Contracts\AwardEngineContract;
 use LaravelFunLab\Contracts\LeaderboardServiceContract;
+use LaravelFunLab\Events\AchievementUnlocked;
+use LaravelFunLab\Events\AwardGranted;
+use LaravelFunLab\Events\CatalogMutated;
+use LaravelFunLab\Events\PrizeAwarded;
 use LaravelFunLab\Models\Achievement;
 use LaravelFunLab\Models\AchievementGrant;
 use LaravelFunLab\Models\GamedMetric;
@@ -93,7 +97,7 @@ class AwardEngine implements AwardEngineContract
         $wasCreated = (bool) $model->wasRecentlyCreated;
         $actor = function_exists('auth') ? auth()->user() : null;
 
-        event(new \LaravelFunLab\Events\CatalogMutated($entityType, $model, $wasCreated, $actor));
+        event(new CatalogMutated($entityType, $model, $wasCreated, $actor));
     }
 
     /**
@@ -144,7 +148,8 @@ class AwardEngine implements AwardEngineContract
                 $validated['icon'] ?? null,
                 $validated['metadata'] ?? [],
                 $validated['active'] ?? true,
-                $validated['order'] ?? 0
+                $validated['order'] ?? 0,
+                $validated['hidden'] ?? false
             ),
             'prize' => $this->setupPrize(
                 $validated['slug'] ?? null,
@@ -291,8 +296,8 @@ class AwardEngine implements AwardEngineContract
 
         // Dispatch events
         if ($this->isEventDispatchEnabled()) {
-            event(new \LaravelFunLab\Events\AchievementUnlocked($recipient, $achievement, $grant, $reason, $source));
-            event(new \LaravelFunLab\Events\AwardGranted($result, 'achievement', $recipient, $grant));
+            event(new AchievementUnlocked($recipient, $achievement, $grant, $reason, $source));
+            event(new AwardGranted($result, 'achievement', $recipient, $grant));
         }
 
         return $result;
@@ -356,8 +361,8 @@ class AwardEngine implements AwardEngineContract
 
         // Dispatch events
         if ($this->isEventDispatchEnabled()) {
-            event(new \LaravelFunLab\Events\PrizeAwarded($recipient, $grant, $reason, $source, $meta));
-            event(new \LaravelFunLab\Events\AwardGranted($result, 'prize', $recipient, $grant));
+            event(new PrizeAwarded($recipient, $grant, $reason, $source, $meta));
+            event(new AwardGranted($result, 'prize', $recipient, $grant));
         }
 
         return $result;
@@ -414,7 +419,8 @@ class AwardEngine implements AwardEngineContract
         ?string $icon,
         array $metadata,
         bool $active,
-        int $order
+        int $order,
+        bool $hidden = false
     ): Achievement {
         if ($slug === null) {
             throw new InvalidArgumentException('Achievement slug is required');
@@ -433,6 +439,7 @@ class AwardEngine implements AwardEngineContract
                 'awardable_type' => $awardableType,
                 'meta' => ! empty($metadata) ? $metadata : null,
                 'is_active' => $active,
+                'is_hidden' => $hidden,
                 'sort_order' => $order,
             ]
         );
