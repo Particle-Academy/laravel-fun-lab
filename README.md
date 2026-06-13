@@ -203,3 +203,9 @@ $leaders = LFL::leaderboard()
 ## License
 
 MIT License - see [LICENSE](LICENSE) for details.
+
+---
+
+## ⭐ Star Fancy UI
+
+If this package is useful to you, a quick ⭐ on the repo really helps us build a better kit. Thank you!
