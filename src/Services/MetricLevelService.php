@@ -5,6 +5,7 @@ declare(strict_types=1);
 namespace LaravelFunLab\Services;
 
 use Illuminate\Database\Eloquent\Model;
+use LaravelFunLab\Events\MetricLevelReached;
 use LaravelFunLab\Facades\LFL;
 use LaravelFunLab\Models\Achievement;
 use LaravelFunLab\Models\GamedMetric;
@@ -28,60 +29,117 @@ class MetricLevelService
     public function checkProgression(ProfileMetric $profileMetric): array
     {
         $metric = $profileMetric->gamedMetric;
-        $totalXp = $profileMetric->total_xp;
-        $currentLevel = $profileMetric->current_level;
 
         // Get all levels for this metric, ordered by level
         $levels = MetricLevel::forMetric($metric->id)
             ->ordered()
             ->get();
 
-        $newLevel = null;
-        $levelsUnlocked = [];
+        $claim = $this->claimLevels($profileMetric, $levels);
 
-        // Find the highest level reached
-        foreach ($levels as $level) {
-            if ($level->isReached($totalXp) && $level->level > $currentLevel) {
-                $newLevel = $level->level;
-                $levelsUnlocked[] = $level;
-            }
+        if ($claim === null) {
+            return [
+                'level_reached' => false,
+                'new_level' => null,
+                'levels_unlocked' => [],
+            ];
         }
 
-        // Update current level if a new level was reached
-        if ($newLevel !== null) {
-            $profileMetric->setLevel($newLevel);
+        [$newLevel, $levelsUnlocked, $totalXp] = $claim;
 
-            // Auto-award achievements attached to unlocked levels
-            foreach ($levelsUnlocked as $level) {
-                $achievements = $level->achievements()->active()->get();
-                $awardable = $profileMetric->profile->awardable;
+        $profile = $profileMetric->profile;
+        $awardable = $profile->awardable;
+        $dispatch = (bool) config('lfl.events.dispatch', true);
 
-                foreach ($achievements as $achievement) {
-                    // Only award if the achievement is for this awardable type or universal
-                    if ($achievement->awardable_type === null || $achievement->awardable_type === get_class($awardable)) {
-                        // Check if already granted (skip if already has it)
-                        if (! $awardable->hasAchievement($achievement)) {
-                            LFL::grant($achievement->slug)
-                                ->to($awardable)
-                                ->because("Reached level {$level->level}: {$level->name}")
-                                ->from('metric-level-progression')
-                                ->withMeta([
-                                    'metric_level_id' => $level->id,
-                                    'gamed_metric_id' => $metric->id,
-                                    'level' => $level->level,
-                                ])
-                                ->save();
-                        }
-                    }
+        // Auto-award achievements attached to unlocked levels, then announce
+        // each level, in ascending order, with what it granted.
+        foreach ($levelsUnlocked as $level) {
+            $granted = [];
+
+            foreach ($level->achievements()->active()->get() as $achievement) {
+                // Only award if the achievement is for this awardable type or universal
+                if ($achievement->awardable_type !== null && $achievement->awardable_type !== get_class($awardable)) {
+                    continue;
                 }
+
+                // Check if already granted (skip if already has it)
+                if ($awardable->hasAchievement($achievement)) {
+                    continue;
+                }
+
+                $result = LFL::grant($achievement->slug)
+                    ->to($awardable)
+                    ->because("Reached level {$level->level}: {$level->name}")
+                    ->from('metric-level-progression')
+                    ->withMeta([
+                        'metric_level_id' => $level->id,
+                        'gamed_metric_id' => $metric->id,
+                        'level' => $level->level,
+                    ])
+                    ->save();
+
+                if ($result->succeeded()) {
+                    $granted[] = $achievement;
+                }
+            }
+
+            if ($dispatch) {
+                event(new MetricLevelReached($profile, $profileMetric, $metric, $level, $awardable, $granted, $totalXp));
             }
         }
 
         return [
-            'level_reached' => $newLevel !== null,
+            'level_reached' => true,
             'new_level' => $newLevel,
             'levels_unlocked' => $levelsUnlocked,
         ];
+    }
+
+    /**
+     * Claim the levels newly reached, exactly once.
+     *
+     * A compare-and-set on `current_level`: the row moves from the level this
+     * copy read to the new one only if nobody else moved it first. If someone
+     * did, the copy is refreshed and the levels recomputed from the stored
+     * level, so a level is announced by exactly one caller however many race
+     * over it, and a stale copy never re-announces a level already recorded.
+     *
+     * @param  \Illuminate\Support\Collection<int, MetricLevel>  $levels  Ordered ascending
+     * @return array{0: int, 1: list<MetricLevel>, 2: int}|null [new level, levels unlocked, total XP], or null
+     */
+    protected function claimLevels(ProfileMetric $profileMetric, $levels): ?array
+    {
+        for ($attempt = 0; $attempt < 5; $attempt++) {
+            $fromLevel = (int) $profileMetric->current_level;
+            $totalXp = (int) $profileMetric->total_xp;
+
+            $unlocked = $levels
+                ->filter(fn (MetricLevel $level) => $level->isReached($totalXp) && $level->level > $fromLevel)
+                ->values()
+                ->all();
+
+            if ($unlocked === []) {
+                return null;
+            }
+
+            $newLevel = (int) end($unlocked)->level;
+
+            $claimed = ProfileMetric::query()
+                ->whereKey($profileMetric->getKey())
+                ->where('current_level', $fromLevel)
+                ->update(['current_level' => $newLevel]);
+
+            if ($claimed === 1) {
+                $profileMetric->forceFill(['current_level' => $newLevel])->syncOriginalAttribute('current_level');
+
+                return [$newLevel, $unlocked, $totalXp];
+            }
+
+            // Someone else moved the level: read it back and try again.
+            $profileMetric->refresh();
+        }
+
+        return null;
     }
 
     /**

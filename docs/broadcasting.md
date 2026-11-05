@@ -28,6 +28,7 @@ When enabled, LFL's events implement `ShouldBroadcast` and emit on private chann
 | Event                   | `broadcastAs`             |
 |-------------------------|---------------------------|
 | `XpAwarded`             | `xp.awarded`              |
+| `MetricLevelReached`    | `metric.level-reached`    |
 | `AchievementUnlocked`   | `achievement.unlocked`    |
 | `PrizeAwarded`          | `prize.awarded`           |
 
@@ -77,6 +78,34 @@ Authorization uses whatever auth guard the consumer has bound to the broadcastin
   "occurred_at": "2026-04-20T12:00:00Z"
 }
 ```
+
+### `metric.level-reached`
+
+One event per level crossed, in ascending order: an award that takes a metric
+from level 1 to level 4 sends three. A level is never announced twice, however
+often progression is recomputed or however many requests race over the same
+threshold. `achievements` lists what this level granted on this crossing, not
+what the profile already held.
+
+```json
+{
+  "profile_id": 1,
+  "gamed_metric_id": 3,
+  "gamed_metric_slug": "combat-xp",
+  "gamed_metric_name": "Combat XP",
+  "level": 3,
+  "level_name": "Adept",
+  "xp_threshold": 200,
+  "total_xp": 250,
+  "achievements": [
+    { "id": 4, "slug": "adept", "name": "Adept", "icon": "sword" }
+  ],
+  "occurred_at": "2026-11-05T12:00:00Z"
+}
+```
+
+On the server, listen for `LaravelFunLab\Events\MetricLevelReached`. It is not an
+award, so it is not written to the event log.
 
 ### `achievement.unlocked`
 
