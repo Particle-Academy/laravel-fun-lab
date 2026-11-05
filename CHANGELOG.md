@@ -7,6 +7,17 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+### Added
+
+- **A leaderboard per gamed metric.** `LFL::leaderboard()->metric('combat-xp')` ranks on that one metric's XP instead of the profile-wide total, and lists only profiles with a record for it. It takes a slug or a `GamedMetric`, combines with `period()` (the period score is that metric's XP alone, where before a period board always summed every metric) and with `by('achievements')` / `by('prizes')` (that metric's participants, sorted on their profile-wide counts). Each result carries `metric_xp` and `metric_level`. Over REST, `GET /api/lfl/leaderboards/{type}?metric=combat-xp`; each entry then carries `metric: { slug, total_xp, current_level }`, and an unknown slug is a `422`. In the OpenAPI spec. Opted-out profiles are excluded as on every board. **Consumer action:** none to keep what you have. To use it, run `php artisan migrate`; if you published the migrations, publish again (`--tag=lfl-migrations`) to pick up the new one.
+- **Two indexes on `profile_metrics`**, `(gamed_metric_id, total_xp)` and `(gamed_metric_id, updated_at)`, so ranking one metric reads that metric's rows in order instead of sorting every metric's. A new migration; existing tables are altered, not rebuilt.
+- **`period_xp` on leaderboard entries over REST** for a `daily`, `weekly` or `monthly` board: the score the entry is ranked on. It was computed and never returned.
+
+### Changed
+
+- **Leaderboard ties break on profile id.** Ties were in whatever order the database returned them, which could differ from page to page, so a profile could appear on two pages or none. **Consumer action:** none, unless you relied on the old unspecified order.
+- `metric()` is on `LeaderboardBuilder`, not on `LeaderboardServiceContract`, so a custom leaderboard class keeps compiling. If you swapped one in via `lfl.services.leaderboard` and it has no `metric()`, `?metric=` returns a `422` saying so rather than ignoring the filter.
+
 ## 0.6.0 — 2026-08-07
 
 ### Changed

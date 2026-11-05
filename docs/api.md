@@ -1262,6 +1262,7 @@ For prizes the `grant_type` is `"prize"` and fields include `prize_id`, `prize_s
 
 **Query Parameters:**
 - `by` - `xp`, `achievements`, `prizes` (default: `xp`)
+- `metric` - a GamedMetric slug. Ranks on that metric's XP and lists only profiles with XP in it. Unknown slug: `422`.
 - `period` - `daily`, `weekly`, `monthly`, `all-time` (default: `all-time`)
 - `per_page` (default: 15)
 - `page` (default: 1)
@@ -1285,6 +1286,11 @@ For prizes the `grant_type` is `"prize"` and fields include `prize_id`, `prize_s
   "links": { "first": "...", "last": "...", "prev": null, "next": "..." }
 }
 ```
+
+With `?metric=combat-xp`, each entry also carries
+`"metric": { "slug": "combat-xp", "total_xp": 1200, "current_level": 4 }`.
+On a `daily`, `weekly` or `monthly` board, each entry carries `period_xp`, the
+score it is ranked on.
 
 ### Catalog
 

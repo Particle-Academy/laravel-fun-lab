@@ -180,6 +180,13 @@ paths:
       parameters:
         - $ref: '#/components/parameters/AwardableType'
         - { in: query, name: by, schema: { type: string, enum: [xp, achievements, prizes], default: xp } }
+        - in: query
+          name: metric
+          description: >-
+            GamedMetric slug. Ranks on that metric's XP instead of the profile-wide
+            total and lists only profiles with XP in it; with `by=achievements` or
+            `by=prizes`, sorts that metric's participants on those counts.
+          schema: { type: string }
         - { in: query, name: period, schema: { type: string, enum: [daily, weekly, monthly, all-time], default: all-time } }
         - { in: query, name: per_page, schema: { type: integer, default: 15 } }
         - { in: query, name: page, schema: { type: integer, default: 1 } }
@@ -196,6 +203,7 @@ paths:
                     items: { $ref: '#/components/schemas/LeaderboardEntry' }
                   meta: { $ref: '#/components/schemas/PaginationMeta' }
                   links: { $ref: '#/components/schemas/PaginationLinks' }
+        '422': { $ref: '#/components/responses/ValidationError' }
 
   /achievements:
     get:
@@ -442,6 +450,16 @@ components:
         achievement_count: { type: integer }
         prize_count: { type: integer }
         last_activity_at: { type: string, format: date-time, nullable: true }
+        metric:
+          type: object
+          description: Present only when the board is ranked on one GamedMetric (`?metric=`).
+          properties:
+            slug: { type: string }
+            total_xp: { type: integer }
+            current_level: { type: integer }
+        period_xp:
+          type: integer
+          description: Present only on a daily, weekly or monthly board. The score the entry is ranked on.
 
     Award:
       type: object

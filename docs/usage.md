@@ -509,6 +509,29 @@ foreach ($leaderboard as $profile) {
 ->by('prizes')
 ```
 
+### Per-Metric Leaderboards
+
+A GamedMetric is an XP type. `metric()` ranks on one metric's XP instead of the
+profile-wide total, and lists only profiles with a record for it:
+
+```php
+$combat = LFL::leaderboard()
+    ->for(User::class)
+    ->metric('combat-xp')      // slug or GamedMetric model
+    ->period('weekly')         // optional; the period score is this metric's XP alone
+    ->perPage(20)
+    ->paginate();
+
+foreach ($combat as $profile) {
+    echo "{$profile->rank}. {$profile->metric_xp} XP, level {$profile->metric_level}";
+}
+```
+
+With `by('achievements')` or `by('prizes')`, the metric's participants are sorted
+on their profile-wide counts. An unknown slug throws `InvalidArgumentException`.
+Opted-out profiles are excluded as on every board, and ties break on profile id,
+so paging never repeats or skips a row.
+
 ### Time-Based Leaderboards
 
 ```php

@@ -8,8 +8,11 @@ use Illuminate\Contracts\Pagination\LengthAwarePaginator;
 use Illuminate\Database\Eloquent\Builder;
 use Illuminate\Database\Eloquent\Collection;
 use Illuminate\Support\Carbon;
+use InvalidArgumentException;
 use LaravelFunLab\Contracts\LeaderboardServiceContract;
+use LaravelFunLab\Models\GamedMetric;
 use LaravelFunLab\Models\Profile;
+use LaravelFunLab\Models\ProfileMetric;
 
 /**
  * LeaderboardBuilder - Fluent Builder for Leaderboard Queries
@@ -33,6 +36,30 @@ class LeaderboardBuilder implements LeaderboardServiceContract
     protected ?int $page = null;
 
     protected bool $excludeOptedOut = true;
+
+    /**
+     * The GamedMetric (slug or model) to rank on, or null for the profile-wide total.
+     */
+    protected string|GamedMetric|null $metric = null;
+
+    /**
+     * Rank on a single GamedMetric (an "XP type") instead of the profile-wide total.
+     *
+     * Only profiles with a record for that metric appear. `by('xp')` sorts on that
+     * metric's XP; `by('achievements')` and `by('prizes')` sort that metric's
+     * participants on their profile-wide counts. Each result carries `metric_xp`
+     * and `metric_level`. Combines with `period()`, where the period score is that
+     * metric's XP alone. An unknown slug throws when the query is built.
+     *
+     * @param  string|GamedMetric|null  $metric  Slug, model, or null to clear
+     * @return $this
+     */
+    public function metric(string|GamedMetric|null $metric): self
+    {
+        $this->metric = $metric;
+
+        return $this;
+    }
 
     /**
      * Filter leaderboard by awardable type (User, Team, Organization, etc.).
@@ -187,13 +214,77 @@ class LeaderboardBuilder implements LeaderboardServiceContract
             $query->optedIn();
         }
 
-        // Apply time-based filtering if needed
-        if ($this->period !== null && $this->period !== 'all-time') {
+        $metric = $this->resolveMetric();
+
+        if ($metric !== null) {
+            // One metric: an inner join on (profile_id, gamed_metric_id) gives at
+            // most one row per profile, so no GROUP BY is needed in any mode, and
+            // the period filter is a plain WHERE on that row.
+            $query = $this->applyMetricJoin($query, $metric);
+        } elseif ($this->isPeriodBoard()) {
             $query = $this->applyTimeFilter($query);
         }
 
         // Apply sorting
         $query = $this->applySorting($query);
+
+        // Ties break on profile id, so paging never repeats or skips a row.
+        $query->orderBy($profileTable.'.id');
+
+        return $query;
+    }
+
+    protected function isPeriodBoard(): bool
+    {
+        return $this->period !== null && $this->period !== 'all-time' && $this->getPeriodStartDate() !== null;
+    }
+
+    /**
+     * Resolve the selected metric. Throws for an unknown slug: an empty board
+     * would read as "nobody has XP yet" rather than "wrong name".
+     */
+    protected function resolveMetric(): ?GamedMetric
+    {
+        if ($this->metric === null || $this->metric instanceof GamedMetric) {
+            return $this->metric;
+        }
+
+        return GamedMetric::findBySlug($this->metric)
+            ?? throw new InvalidArgumentException("GamedMetric '{$this->metric}' not found.");
+    }
+
+    /**
+     * Restrict to one metric's participants and select its XP and level.
+     *
+     * Served by the (gamed_metric_id, total_xp) and (gamed_metric_id, updated_at)
+     * indexes on profile_metrics.
+     *
+     * @param  Builder<Profile>  $query
+     * @return Builder<Profile>
+     */
+    protected function applyMetricJoin(Builder $query, GamedMetric $metric): Builder
+    {
+        $profileTable = (new Profile)->getTable();
+        $metricsTable = (new ProfileMetric)->getTable();
+
+        $query
+            ->select($profileTable.'.*')
+            ->addSelect([
+                $metricsTable.'.total_xp as metric_xp',
+                $metricsTable.'.current_level as metric_level',
+            ])
+            ->selectRaw('? as metric_slug', [$metric->slug])
+            ->join($metricsTable, function ($join) use ($profileTable, $metricsTable, $metric) {
+                $join->on($metricsTable.'.profile_id', '=', $profileTable.'.id')
+                    ->where($metricsTable.'.gamed_metric_id', '=', $metric->getKey());
+            });
+
+        if ($this->isPeriodBoard()) {
+            $query
+                ->addSelect($metricsTable.'.total_xp as period_xp')
+                ->where($metricsTable.'.updated_at', '>=', $this->getPeriodStartDate())
+                ->where($metricsTable.'.total_xp', '>', 0);
+        }
 
         return $query;
     }
@@ -218,7 +309,7 @@ class LeaderboardBuilder implements LeaderboardServiceContract
         // For time-based filtering, we need to calculate scores from profile_metrics within the period
         // This requires joining with the profile_metrics table and aggregating
         $profileTable = (new Profile)->getTable();
-        $metricsTable = config('lfl.table_prefix', 'lfl_').'profile_metrics';
+        $metricsTable = (new ProfileMetric)->getTable();
 
         // Build a subquery to calculate period-specific scores
         return $query
@@ -253,22 +344,36 @@ class LeaderboardBuilder implements LeaderboardServiceContract
      */
     protected function applySorting(Builder $query): Builder
     {
+        // Columns are qualified: with a metric joined, `total_xp` exists on both
+        // tables and an unqualified sort is ambiguous.
+        $profileTable = (new Profile)->getTable();
+
+        if ($this->metric !== null) {
+            $metricXp = (new ProfileMetric)->getTable().'.total_xp';
+
+            return match ($this->sortBy) {
+                'achievements' => $query->orderByDesc($profileTable.'.achievement_count')->orderByDesc($metricXp),
+                'prizes' => $query->orderByDesc($profileTable.'.prize_count')->orderByDesc($metricXp),
+                default => $query->orderByDesc($metricXp),
+            };
+        }
+
         // For time-based filtering, sort by period_xp if it exists
-        if ($this->period !== null && $this->period !== 'all-time') {
+        if ($this->isPeriodBoard()) {
             return match ($this->sortBy) {
                 'xp' => $query->orderByDesc('period_xp'),
-                'achievements' => $query->orderByDesc('achievement_count'),
-                'prizes' => $query->orderByDesc('prize_count'),
+                'achievements' => $query->orderByDesc($profileTable.'.achievement_count'),
+                'prizes' => $query->orderByDesc($profileTable.'.prize_count'),
                 default => $query->orderByDesc('period_xp'),
             };
         }
 
         // For all-time leaderboards, use profile aggregates
         return match ($this->sortBy) {
-            'xp' => $query->orderByDesc('total_xp'),
-            'achievements' => $query->orderByDesc('achievement_count'),
-            'prizes' => $query->orderByDesc('prize_count'),
-            default => $query->orderByDesc('total_xp'),
+            'xp' => $query->orderByDesc($profileTable.'.total_xp'),
+            'achievements' => $query->orderByDesc($profileTable.'.achievement_count'),
+            'prizes' => $query->orderByDesc($profileTable.'.prize_count'),
+            default => $query->orderByDesc($profileTable.'.total_xp'),
         };
     }
 }
