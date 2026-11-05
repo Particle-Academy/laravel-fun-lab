@@ -7,6 +7,8 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [0.7.0] - 2026-11-04
+
 ### Added
 
 - **A leaderboard per gamed metric.** `LFL::leaderboard()->metric('combat-xp')` ranks on that one metric's XP instead of the profile-wide total, and lists only profiles with a record for it. It takes a slug or a `GamedMetric`, combines with `period()` (the period score is that metric's XP alone, where before a period board always summed every metric) and with `by('achievements')` / `by('prizes')` (that metric's participants, sorted on their profile-wide counts). Each result carries `metric_xp` and `metric_level`. Over REST, `GET /api/lfl/leaderboards/{type}?metric=combat-xp`; each entry then carries `metric: { slug, total_xp, current_level }`, and an unknown slug is a `422`. In the OpenAPI spec. Opted-out profiles are excluded as on every board. **Consumer action:** none to keep what you have. To use it, run `php artisan migrate`; if you published the migrations, publish again (`--tag=lfl-migrations`) to pick up the new one.
