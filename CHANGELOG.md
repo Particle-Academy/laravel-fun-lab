@@ -9,6 +9,10 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 Pre-1.0: breaking changes land in MINOR releases, so read the BREAKING lines before upgrading across one.
 
+### Added
+
+- **The engine is held to the shared `fun-lab/*` conformance tables** (fancy-conformance 0.49.0, 67 rows), the same ones the Node and Python twins (`@particle-academy/fancy-fun-lab`, `fancy-fun-lab`) run. The goldens were exported from this engine by `tests/Conformance/ExportFixturesTest.php`, and `tests/Feature/FunLabConformanceTest.php` runs them on every push. Test-only: `particle-academy/fancy-conformance` is a dev dependency. **Consumer action:** none.
+
 ### Changed
 
 - **BREAKING (behaviour) — a daily, weekly or monthly leaderboard ranks on the XP EARNED in the period.** It used to sum the *lifetime* `total_xp` of every metric touched in the period, so a profile with 10,000 old XP that earned 1 XP on Monday scored 10,000 on the weekly board and outranked someone who earned 500 that week. The score is now the sum of the `xp_awarded` amounts in the event log since the period started (weeks start on Monday), and the board lists only profiles that earned XP in the period. A per-metric period board (`->metric('combat-xp')->period('weekly')`) ranks on that metric's XP earned in the period; `metric_xp` still carries the metric's lifetime total. `period_xp` is the new score, over PHP and REST. **Consumer action:** none for all-time boards. A period board now needs the event log, which is on by default (`lfl.events.log_to_database` and `lfl.events.dispatch`); with it off, `period()` throws `PeriodLeaderboardUnavailableException` (an `InvalidArgumentException`) and REST answers `422` on `period`, rather than returning an empty board that reads like a quiet week. XP awarded before you upgrade is in the log already, so boards are correct from the first request.
