@@ -13,10 +13,10 @@
 Laravel Fun Lab (LFL) is an analytics-driven gamification layer for Laravel applications. Track user engagement through XP, achievements, and prizes while capturing structured activity data that apps normally never track.
 
 <!-- fancy-agents-note:start -->
-> **For agents.** Every Fancy package, this one included, is listed on the
-> Fancy MCP catalog server at `https://ui.particle.academy/mcp` (streamable HTTP, no API key;
-> MCP id `fancy-ui`), with install commands and docs. How an agent installs
-> and uses this package is in [AGENTS.md](https://github.com/Particle-Academy/laravel-fun-lab/blob/main/AGENTS.md).
+> **For agents.** This package is listed on the Fancy MCP catalog server at
+> `https://ui.particle.academy/mcp` (streamable HTTP, no API key; MCP id `fancy-ui`),
+> with install commands and docs, alongside the rest of the kit. How an agent
+> installs and uses this package is in [AGENTS.md](https://github.com/Particle-Academy/laravel-fun-lab/blob/main/AGENTS.md).
 <!-- fancy-agents-note:end -->
 
 ## Features
