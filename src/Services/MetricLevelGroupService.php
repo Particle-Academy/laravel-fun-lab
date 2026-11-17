@@ -229,7 +229,9 @@ class MetricLevelGroupService
             return 100.0;
         }
 
-        return min(100.0, ($progressXp / $requiredXp) * 100);
+        // Clamped at 0 as well as 100: a profile is level 1 before reaching
+        // level 1's own threshold, so XP can sit below the floor.
+        return max(0.0, min(100.0, ($progressXp / $requiredXp) * 100));
     }
 
     /**

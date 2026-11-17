@@ -5,6 +5,7 @@ declare(strict_types=1);
 namespace LaravelFunLab\Services;
 
 use Illuminate\Database\Eloquent\Model;
+use Illuminate\Support\Collection;
 use LaravelFunLab\Events\MetricLevelReached;
 use LaravelFunLab\Facades\LFL;
 use LaravelFunLab\Models\Achievement;
@@ -104,7 +105,7 @@ class MetricLevelService
      * level, so a level is announced by exactly one caller however many race
      * over it, and a stale copy never re-announces a level already recorded.
      *
-     * @param  \Illuminate\Support\Collection<int, MetricLevel>  $levels  Ordered ascending
+     * @param  Collection<int, MetricLevel>  $levels  Ordered ascending
      * @return array{0: int, 1: list<MetricLevel>, 2: int}|null [new level, levels unlocked, total XP], or null
      */
     protected function claimLevels(ProfileMetric $profileMetric, $levels): ?array
@@ -316,6 +317,8 @@ class MetricLevelService
             return 100.0;
         }
 
-        return min(100.0, ($progressXp / $requiredXp) * 100);
+        // Clamped at 0 as well as 100: a profile is level 1 before reaching
+        // level 1's own threshold, so XP can sit below the floor.
+        return max(0.0, min(100.0, ($progressXp / $requiredXp) * 100));
     }
 }

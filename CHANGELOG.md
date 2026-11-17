@@ -22,6 +22,7 @@ Pre-1.0: breaking changes land in MINOR releases, so read the BREAKING lines bef
 
 ### Fixed
 
+- **Level progress never goes below 0%.** A profile is level 1 from its first award even when level 1's own threshold is above its XP, so progress from that floor was negative: 10 XP against levels at 50 and 80 reported -133.33%. `getProgressPercentage()` (metric and group) and `progress_percentage` everywhere it appears are now clamped to 0-100. **Consumer action:** none.
 - **`LFL::analytics()->forAwardable($user)` answers for that awardable.** It filtered by the awardable's TYPE only, so every count, total and series covered every user. **Consumer action:** none, unless you relied on the old answer, which was wrong.
 - **`export()` orders rows logged in the same instant by id, newest first.** Ties were in whatever order the database returned them.
 - **`bySource()` writes its `unknown` fallback as a string literal.** It was double-quoted, which SQLite and MySQL read as a string and Postgres reads as a column name, so on Postgres the query failed.
