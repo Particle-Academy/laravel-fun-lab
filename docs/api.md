@@ -5,7 +5,8 @@ Complete API documentation for Laravel Fun Lab.
 ## Table of Contents
 
 - [LFL Facade](#lfl-facade)
-- [AwardBuilder](#awardbuilder)
+- [AwardXpBuilder](#awardxpbuilder)
+- [GrantBuilder](#grantbuilder)
 - [AnalyticsBuilder](#analyticsbuilder)
 - [LeaderboardBuilder](#leaderboardbuilder)
 - [Awardable Trait](#awardable-trait)
@@ -22,132 +23,63 @@ The `LFL` facade provides static access to all Laravel Fun Lab functionality.
 use LaravelFunLab\Facades\LFL;
 ```
 
-### Award Methods
+### Setup
 
-#### `award(AwardType|string $type): AwardBuilder`
+#### `setup(string $a, array $with = []): Model`
 
-Start building an award operation with the fluent API.
-
-```php
-LFL::award('achievement')->to($user)->achievement('first-login')->grant();
-LFL::award('prize')->to($user)->withMeta(['prize_slug' => 'premium'])->grant();
-```
-
-**Parameters:**
-- `$type` - Award type: `'achievement'`, `'prize'`, or a GamedMetric slug
-
-**Returns:** `AwardBuilder` instance
-
-#### `awardGamedMetric(Model $recipient, string|GamedMetric $gamedMetric, int $amount): ProfileMetric`
-
-Award XP to a specific GamedMetric.
+Create or update a catalog entity, matched on its slug (or on metric + level for
+levels). `$a` is one of `gamed-metric`, `metric-level`, `metric-level-group`,
+`metric-level-group-level`, `metric-level-group-metric`, `achievement`, `prize`.
 
 ```php
-$profileMetric = LFL::awardGamedMetric($user, 'combat-xp', 50);
-echo $profileMetric->total_xp; // 50
+LFL::setup(a: 'gamed-metric', with: ['slug' => 'combat-xp', 'name' => 'Combat XP']);
+LFL::setup(a: 'metric-level', with: ['metric' => 'combat-xp', 'level' => 2, 'xp' => 100, 'name' => 'Apprentice']);
+LFL::setup(a: 'achievement', with: ['slug' => 'first-login', 'description' => 'Welcome!', 'icon' => 'star']);
+LFL::setup(a: 'prize', with: ['slug' => 'premium-access', 'type' => 'virtual', 'inventory' => 100]);
 ```
 
-**Parameters:**
-- `$recipient` - Model instance with `Awardable` trait
-- `$gamedMetric` - GamedMetric slug or model instance
-- `$amount` - XP amount to award
+A missing `name` defaults to the headline form of the slug (`first-login` is
+"First Login"; a level is "Level N").
 
-**Returns:** `ProfileMetric` - The updated profile metric record
+**Returns:** the created or updated model.
 
-**Throws:** `InvalidArgumentException` if GamedMetric not found or inactive
+### Awarding XP
 
-#### `grantAchievement(Model $recipient, string $achievementSlug, ?string $reason = null, ?string $source = null, array $meta = []): AwardResult`
+#### `award(string $metricSlug): AwardXpBuilder`
 
-Quick method to grant an achievement.
+All XP flows through a gamed metric. See [AwardXpBuilder](#awardxpbuilder).
 
 ```php
-LFL::grantAchievement($user, 'first-login', 'completed first login', 'auth');
+$profileMetric = LFL::award('combat-xp')->to($user)->amount(50)->because('defeated boss')->save();
 ```
 
-**Parameters:**
-- `$recipient` - Model instance with `Awardable` trait
-- `$achievementSlug` - Achievement slug identifier
-- `$reason` - Reason for the grant
-- `$source` - Source identifier
-- `$meta` - Additional metadata array
+Saving an award also checks level progression for that metric and for every
+metric level group containing it, and grants the active achievements attached
+to each level reached.
 
-**Returns:** `AwardResult`
+### Granting achievements and prizes
 
-#### `awardPrize(Model $recipient, ?string $reason = null, ?string $source = null, array $meta = []): AwardResult`
+#### `grant(string $slug): GrantBuilder`
 
-Quick method to award a prize.
+Grant an achievement or a prize by slug. See [GrantBuilder](#grantbuilder).
 
 ```php
-LFL::awardPrize($user, 'won contest', 'contest-system');
+$result = LFL::grant('first-login')->to($user)->because('completed onboarding')->save();
 ```
 
-**Returns:** `AwardResult`
+**Returns:** a `GrantBuilder`; its `save()` returns an `AwardResult`.
 
-#### `awardBadge(Model $recipient, ?string $reason = null, ?string $source = null, array $meta = []): AwardResult`
+### Levels
 
-Quick method to award a badge.
+#### `hasLevel(Model $awardable, int $level, ?string $metric = null, ?string $group = null): bool`
+
+Whether the awardable has reached `$level` in a metric or a metric level group.
+Pass exactly one of `metric` and `group`.
 
 ```php
-LFL::awardBadge($user, 'early adopter', 'admin');
+LFL::hasLevel($user, 5, metric: 'combat-xp');
+LFL::hasLevel($user, 10, group: 'overall-power');
 ```
-
-**Returns:** `AwardResult`
-
-### GamedMetric Methods
-
-#### `awardGamedMetric(Model $recipient, string|GamedMetric $gamedMetric, int $amount): ProfileMetric`
-
-Award XP to a specific GamedMetric (XP bucket). Automatically checks level progression for the metric and grants achievements attached to reached levels. Also automatically checks progression for any MetricLevelGroups that contain this metric.
-
-```php
-// Award combat XP by slug
-$profileMetric = LFL::awardGamedMetric($user, 'combat-xp', 100);
-
-// Award using GamedMetric model
-$combatMetric = GamedMetric::findBySlug('combat-xp');
-$profileMetric = LFL::awardGamedMetric($user, $combatMetric, 50);
-```
-
-**Parameters:**
-- `$recipient` - Model instance with `Awardable` trait
-- `$gamedMetric` - GamedMetric slug string or model instance
-- `$amount` - XP amount to award
-
-**Returns:** `ProfileMetric` - The updated profile metric record
-
-**Note:** This method automatically:
-1. Updates the ProfileMetric with new XP total
-2. Checks individual metric level progression
-3. Checks group progression for all MetricLevelGroups containing this metric
-4. Grants achievements attached to reached levels (both metric and group levels)
-
-### Achievement Setup
-
-#### `setup(string $an, ?string $for = null, ?string $name = null, ?string $description = null, ?string $icon = null, array $metadata = [], bool $active = true, int $order = 0): Achievement`
-
-Set up a new achievement dynamically.
-
-```php
-LFL::setup(
-    an: 'first-login',
-    for: 'User',
-    name: 'First Login',
-    description: 'Welcome!',
-    icon: 'star'
-);
-```
-
-**Parameters:**
-- `$an` - Achievement slug (required)
-- `$for` - Awardable type (e.g., `'User'`)
-- `$name` - Display name (auto-generated from slug if not provided)
-- `$description` - Achievement description
-- `$icon` - Icon identifier
-- `$metadata` - Custom metadata array
-- `$active` - Whether achievement is active
-- `$order` - Display order
-
-**Returns:** `Achievement` model
 
 ### Profile Methods
 
@@ -247,69 +179,70 @@ Check if the API layer is enabled.
 
 Check if the UI layer is enabled.
 
-## AwardBuilder
+## AwardXpBuilder
 
-Fluent builder for award operations.
+Returned by `LFL::award($metricSlug)`.
 
 ### Methods
 
 #### `to(Model $recipient): self`
 
-Set the recipient of the award.
+The awardable receiving the XP (uses the `Awardable` trait). Required.
 
-```php
-LFL::award('points')->to($user);
-```
+#### `amount(int $amount): self`
 
-#### `for(string $reason): self`
+The XP to add. Must be greater than 0 and no more than
+`lfl.defaults.max_points_per_action` (10000 by default; 0 turns the cap off).
 
-Set the reason for the award.
+#### `because(string $reason): self` / `for(string $reason): self`
 
-```php
-LFL::award('points')->for('task completion');
-```
+Why the XP was awarded.
 
 #### `from(string $source): self`
 
-Set the source/origin of the award.
-
-```php
-LFL::award('points')->from('task-system');
-```
-
-#### `amount(int|float $amount): self`
-
-Set the amount for cumulative awards.
-
-```php
-LFL::award('points')->amount(50);
-```
+Where the award came from.
 
 #### `withMeta(array $meta): self`
 
-Add metadata to the award.
+Extra data carried on the `XpAwarded` event and the event log.
 
-```php
-LFL::award('points')->withMeta(['task_id' => 123]);
-```
+#### `save(): ProfileMetric` / `grant(): ProfileMetric`
 
-#### `achievement(string|Achievement $achievement): self`
+Award the XP and return the updated `ProfileMetric`.
 
-Specify which achievement to grant (for achievement type awards).
+**Throws:** `InvalidArgumentException` when the recipient or amount is missing or
+the metric is unknown or inactive; `AwardRejectedException` with reason
+`cap_exceeded`, `pipeline_rejected` or `opted_out`.
 
-```php
-LFL::award('achievement')->achievement('first-login');
-```
+## GrantBuilder
 
-#### `grant(): AwardResult`
+Returned by `LFL::grant($slug)`. The slug is resolved to an achievement first,
+then a prize.
 
-Execute the award operation and persist to database.
+### Methods
 
-```php
-$result = LFL::award('points')->to($user)->amount(50)->grant();
-```
+#### `to(Model $recipient): self`
 
-**Returns:** `AwardResult`
+The awardable receiving the grant. Required.
+
+#### `because(string $reason): self` / `for(string $reason): self`
+
+Why it was granted.
+
+#### `from(string $source): self`
+
+Where the grant came from.
+
+#### `withMeta(array $meta): self`
+
+Extra data stored on the grant.
+
+#### `save(): AwardResult` / `grant(): AwardResult`
+
+Grant it. An achievement is granted once per profile; a second grant fails. A
+prize can be granted repeatedly until its inventory runs out.
+
+**Returns:** `AwardResult`. A failure carries a message; it does not throw.
 
 ## AnalyticsBuilder
 
@@ -505,172 +438,96 @@ $query = LFL::analytics()->query()->where('amount', '>', 100);
 
 ## LeaderboardBuilder
 
-Fluent builder for leaderboard queries.
+Fluent builder for leaderboard queries. Ties are broken on profile id, so paging
+never repeats or skips an entry. Opted-out profiles are excluded unless you ask.
 
 ### Methods
 
 #### `for(string $type): self`
 
-Filter leaderboard by awardable type.
+Only rank awardables of this type.
 
 ```php
 LFL::leaderboard()->for(User::class);
 ```
 
-#### `by(string $metric): self`
+#### `by(string $sort): self`
 
-Sort leaderboard by metric.
-
-```php
-LFL::leaderboard()->by('points'); // 'points', 'achievements', 'prizes'
-```
+Rank on `'xp'` (the default; `'points'` is an alias), `'achievements'` or `'prizes'`.
 
 #### `period(?string $period = null): self`
 
-Filter leaderboard by time period.
+`'daily'`, `'weekly'` (from Monday), `'monthly'` or `'all-time'` (the default).
+A period board ranks on the XP **earned within the period**, read from the event
+log, and lists only profiles that earned some. Each entry carries it as `period_xp`.
 
 ```php
-LFL::leaderboard()->period('weekly'); // 'daily', 'weekly', 'monthly', 'all-time'
+LFL::leaderboard()->period('weekly')->take(10);
 ```
 
-#### `limit(int $limit): self`
+#### `metric(string|GamedMetric|null $metric): self`
 
-Set the maximum number of results.
+Rank on one gamed metric's XP instead of the profile-wide total, listing only
+profiles with a record for it. Entries carry `metric_xp` and `metric_level`.
+Combined with `period()`, the period score is that metric's XP earned in the
+period. An unknown slug throws `InvalidArgumentException`.
 
-```php
-LFL::leaderboard()->limit(10);
-```
+#### `excludeOptedOut(bool $exclude = true): self`
 
-#### `perPage(int $perPage): self`
+Pass `false` to include opted-out profiles.
 
-Set pagination per page.
+#### `perPage(int $perPage): self` / `page(int $page): self`
 
-```php
-LFL::leaderboard()->perPage(15);
-```
+Pagination for `paginate()`.
 
-#### `page(int $page): self`
+#### `take(int $limit): Collection`
 
-Set the current page number.
-
-```php
-LFL::leaderboard()->page(2);
-```
-
-#### `includeOptedOut(bool $include = true): self`
-
-Include opted-out users in leaderboard.
-
-```php
-LFL::leaderboard()->includeOptedOut();
-```
+The top `$limit` entries, ranked from 1.
 
 #### `get(): Collection`
 
-Get leaderboard results as a collection.
+Every entry, ranked from 1.
+
+#### `paginate(): LengthAwarePaginator`
+
+One page, ranked from the page's offset.
 
 ```php
-$leaderboard = LFL::leaderboard()->for(User::class)->by('points')->get();
-```
-
-#### `paginate(?int $perPage = null): LengthAwarePaginator`
-
-Get paginated leaderboard results.
-
-```php
-$leaderboard = LFL::leaderboard()->for(User::class)->by('points')->paginate(15);
+$page = LFL::leaderboard()->for(User::class)->by('xp')->perPage(15)->page(2)->paginate();
 ```
 
 ## Awardable Trait
 
-Trait to add to Eloquent models for gamification features.
+Add to any Eloquent model that can earn XP, achievements and prizes. It brings
+`HasProfile` with it.
 
-### Relationships
+### Profile
 
-#### `awards(): MorphMany`
+- `profile(): MorphOne` / `getProfile(): Profile` (created on first use) / `hasProfile(): bool`
+- `isOptedIn(): bool` / `isOptedOut(): bool` / `optIn(): bool` / `optOut(): bool`
 
-Get all awards (points/badges) granted to this model.
+### XP and levels
 
-```php
-$user->awards;
-```
+- `getTotalXp(): int` - XP across every gamed metric
+- `getXpFor(string|GamedMetric $metric): int`
+- `getLevelFor(string|GamedMetric $metric): int` - 1 until a level is reached
 
-#### `achievementGrants(): MorphMany`
+### Achievements and prizes
 
-Get all achievement grants for this model.
-
-```php
-$user->achievementGrants;
-```
-
-### Helper Methods
-
-#### `getTotalPoints(?string $type = 'points'): int|float`
-
-Get total points accumulated by this model.
-
-```php
-$total = $user->getTotalPoints();
-```
-
-#### `hasAchievement(string|Achievement $achievement): bool`
-
-Check if this model has a specific achievement.
+- `hasAchievement(string|Achievement $achievement): bool`
+- `getAchievements(): Collection`
+- `getAchievementCount(): int` / `getPrizeCount(): int`
+- `getRecentAchievements(int $limit = 10): Collection`
+- `getRecentPrizes(int $limit = 10): Collection`
 
 ```php
 if ($user->hasAchievement('first-login')) {
     // ...
 }
-```
-
-#### `getAchievements(): Collection`
-
-Get all achievements unlocked by this model.
-
-```php
-$achievements = $user->getAchievements();
-```
-
-#### `getAwardCount(string $type): int`
-
-Get award count by type.
-
-```php
-$count = $user->getAwardCount('points');
-```
-
-#### `getRecentAwards(int $limit = 10): Collection`
-
-Get recent awards.
-
-```php
-$recent = $user->getRecentAwards(10);
-```
-
-#### `getRecentAchievements(int $limit = 10): Collection`
-
-Get recent achievements.
-
-```php
-$recent = $user->getRecentAchievements(10);
+$combatLevel = $user->getLevelFor('combat-xp');
 ```
 
 ## Models
-
-### Award
-
-Represents a point or badge award.
-
-**Properties:**
-- `id` - Award ID
-- `type` - Award type (`'points'`, `'badge'`, etc.)
-- `amount` - Award amount
-- `reason` - Reason for award
-- `source` - Source identifier
-- `meta` - Metadata JSON
-- `awardable_type` - Recipient model type
-- `awardable_id` - Recipient model ID
-- `created_at` - Creation timestamp
 
 ### Achievement
 
@@ -913,7 +770,7 @@ $result = $levelService->checkProgression($profileMetric);
 // ]
 ```
 
-**Note:** Level progression is automatically checked when XP is awarded via `LFL::award()` or `LFL::awardGamedMetric()`. You typically don't need to call this method manually.
+**Note:** Level progression is automatically checked when XP is awarded via `LFL::award()`. You typically don't need to call this method manually.
 
 ### MetricLevelGroupService
 
@@ -1290,7 +1147,9 @@ For prizes the `grant_type` is `"prize"` and fields include `prize_id`, `prize_s
 With `?metric=combat-xp`, each entry also carries
 `"metric": { "slug": "combat-xp", "total_xp": 1200, "current_level": 4 }`.
 On a `daily`, `weekly` or `monthly` board, each entry carries `period_xp`, the
-score it is ranked on.
+score it is ranked on: the XP earned since the period started, from the event
+log. With the event log off (`lfl.events.log_to_database` or
+`lfl.events.dispatch` false) a period board is a `422` on `period`.
 
 ### Catalog
 

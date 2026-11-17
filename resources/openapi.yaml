@@ -459,7 +459,7 @@ components:
             current_level: { type: integer }
         period_xp:
           type: integer
-          description: Present only on a daily, weekly or monthly board. The score the entry is ranked on.
+          description: Present only on a daily, weekly or monthly board. The score the entry is ranked on - the XP earned since the period started, read from the event log.
 
     Award:
       type: object

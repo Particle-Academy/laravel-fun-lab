@@ -7,9 +7,21 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+Pre-1.0: breaking changes land in MINOR releases, so read the BREAKING lines before upgrading across one.
+
 ### Changed
 
+- **BREAKING (behaviour) — a daily, weekly or monthly leaderboard ranks on the XP EARNED in the period.** It used to sum the *lifetime* `total_xp` of every metric touched in the period, so a profile with 10,000 old XP that earned 1 XP on Monday scored 10,000 on the weekly board and outranked someone who earned 500 that week. The score is now the sum of the `xp_awarded` amounts in the event log since the period started (weeks start on Monday), and the board lists only profiles that earned XP in the period. A per-metric period board (`->metric('combat-xp')->period('weekly')`) ranks on that metric's XP earned in the period; `metric_xp` still carries the metric's lifetime total. `period_xp` is the new score, over PHP and REST. **Consumer action:** none for all-time boards. A period board now needs the event log, which is on by default (`lfl.events.log_to_database` and `lfl.events.dispatch`); with it off, `period()` throws `PeriodLeaderboardUnavailableException` (an `InvalidArgumentException`) and REST answers `422` on `period`, rather than returning an empty board that reads like a quiet week. XP awarded before you upgrade is in the log already, so boards are correct from the first request.
+- **A group level is claimed exactly once.** `MetricLevelGroupService::checkProgression()` now moves `current_level` with a compare-and-set, as metric levels have since 0.7.0, so two requests crossing the same group threshold grant its achievements once between them, and a stale `ProfileMetricGroup` never re-claims a level already recorded. The return value is unchanged. **Consumer action:** none.
 - Rebranded the display name to Fancy Dev Kit (README and package description). Package names, the npm scope, URLs and the `fancy-ui` MCP id are unchanged.
+
+### Removed
+
+- **BREAKING — `LaravelFunLab\Builders\AwardBuilder`.** Nothing in the package constructed it: `LFL::award()` has returned `AwardXpBuilder` (XP to a gamed metric) and `LFL::grant()` a `GrantBuilder`, while the docs went on describing `AwardBuilder`'s `points` / `badge` / custom-type API. **Consumer action:** if you wrote `new AwardBuilder(...)` yourself, use `LFL::award($metricSlug)` for XP (create a gamed metric for each currency) and `LFL::grant($slug)` for achievements and prizes. If you only used the facade, do nothing.
+
+### Fixed
+
+- **The API reference and extension guide describe the API that exists.** `docs/api.md` documented `award(): AwardBuilder`, `awardGamedMetric()`, `grantAchievement()`, `awardPrize()`, `awardBadge()`, `setup(an: ...)`, leaderboard `limit()` / `includeOptedOut()` and Awardable `getTotalPoints()` / `awards()`, none of which exist, and an `Award` model that does not either. It now documents `setup()`, `award()` with `AwardXpBuilder`, `grant()` with `GrantBuilder`, `hasLevel()`, the real leaderboard and Awardable methods. `docs/extending.md` no longer says a registered award type can be passed to `award()`; it shows a gamed metric as the way to add a currency.
 
 ## [0.7.0] - 2026-11-04
 

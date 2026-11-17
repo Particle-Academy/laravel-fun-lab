@@ -8,6 +8,7 @@ use Illuminate\Http\Request;
 use Illuminate\Http\Resources\Json\AnonymousResourceCollection;
 use Illuminate\Validation\Rule;
 use Illuminate\Validation\ValidationException;
+use LaravelFunLab\Exceptions\PeriodLeaderboardUnavailableException;
 use LaravelFunLab\Facades\LFL;
 use LaravelFunLab\Http\Resources\LeaderboardEntryResource;
 use LaravelFunLab\Models\GamedMetric;
@@ -57,6 +58,12 @@ class LeaderboardController extends Controller
             $builder->metric($metric);
         }
 
-        return LeaderboardEntryResource::collection($builder->paginate());
+        try {
+            $page = $builder->paginate();
+        } catch (PeriodLeaderboardUnavailableException $e) {
+            throw ValidationException::withMessages(['period' => $e->getMessage()]);
+        }
+
+        return LeaderboardEntryResource::collection($page);
     }
 }

@@ -4,109 +4,42 @@ This guide covers extending Laravel Fun Lab with custom implementations, award t
 
 ## Table of Contents
 
-- [Custom Award Types](#custom-award-types)
+- [Custom XP Currencies](#custom-xp-currencies)
 - [Service Swapping](#service-swapping)
 - [Macros](#macros)
 - [Validation Pipelines](#validation-pipelines)
 - [Event Listeners](#event-listeners)
 - [Custom Models](#custom-models)
 
-## Custom Award Types
+## Custom XP Currencies
 
-LFL supports custom award types beyond the built-in `points`, `achievement`, `prize`, and `badge` types.
-
-### Registering Custom Types
-
-#### Via Service Provider
-
-Register custom types in your `AppServiceProvider`:
-
-```php
-use LaravelFunLab\Registries\AwardTypeRegistry;
-
-public function boot(): void
-{
-    // Register a single type
-    AwardTypeRegistry::register(
-        type: 'coins',
-        name: 'Coins',
-        icon: 'coin',
-        cumulative: true,
-        defaultAmount: 100
-    );
-    
-    // Register multiple types
-    AwardTypeRegistry::registerMany([
-        'coins' => [
-            'name' => 'Coins',
-            'icon' => 'coin',
-            'cumulative' => true,
-            'default_amount' => 100,
-        ],
-        'stars' => [
-            'name' => 'Stars',
-            'icon' => 'star',
-            'cumulative' => true,
-            'default_amount' => 1,
-        ],
-    ]);
-}
-```
-
-#### Via Configuration
-
-Add custom types to `config/lfl.php`:
-
-```php
-'award_types' => [
-    'points' => [
-        'name' => 'Points',
-        'icon' => 'star',
-        'cumulative' => true,
-        'default_amount' => 10,
-    ],
-    'coins' => [
-        'name' => 'Coins',
-        'icon' => 'coin',
-        'cumulative' => true,
-        'default_amount' => 100,
-    ],
-],
-```
-
-### Using Custom Types
-
-Once registered, use custom types with the same API:
+There is one way to give XP: `LFL::award($metricSlug)`, and every kind of XP is a
+**gamed metric**. A new currency ("coins", "stars", "reputation") is a new gamed
+metric, with levels if it should have them:
 
 ```php
 use LaravelFunLab\Facades\LFL;
 
-// Award coins using fluent API
-$result = LFL::award('coins')
-    ->to($user)
-    ->amount(50)
-    ->for('purchase')
-    ->grant();
+LFL::setup(a: 'gamed-metric', with: ['slug' => 'coins', 'name' => 'Coins', 'icon' => 'coin']);
+LFL::setup(a: 'metric-level', with: ['metric' => 'coins', 'level' => 2, 'xp' => 1000, 'name' => 'Saver']);
 
-// Award coins with default amount
-$result = LFL::award('coins')
-    ->to($user)
-    ->for('daily bonus')
-    ->grant(); // Uses default_amount from registry
+LFL::award('coins')->to($user)->amount(50)->because('purchase')->save();
 ```
 
-### Checking Registration
+To weigh several currencies together (an "overall power" score), put them in a
+metric level group with a weight per metric:
 
 ```php
-use LaravelFunLab\Registries\AwardTypeRegistry;
-
-if (AwardTypeRegistry::isRegistered('coins')) {
-    // Type is registered
-}
-
-$metadata = AwardTypeRegistry::getMetadata('coins');
-// Returns: ['name' => 'Coins', 'icon' => 'coin', 'cumulative' => true, 'default_amount' => 100]
+LFL::setup(a: 'metric-level-group', with: ['slug' => 'overall']);
+LFL::setup(a: 'metric-level-group-metric', with: ['group' => 'overall', 'metric' => 'combat-xp', 'weight' => 1.0]);
+LFL::setup(a: 'metric-level-group-metric', with: ['group' => 'overall', 'metric' => 'coins', 'weight' => 0.1]);
 ```
+
+`AwardTypeRegistry` and `config('lfl.award_types')` still exist and hold display
+metadata (name, icon) for the award types the event log records. Registering a
+type there does **not** make `LFL::award()` accept it: `award()` takes a gamed
+metric slug and nothing else. (Before 0.8.0 the docs said otherwise; that path
+belonged to an `AwardBuilder` nothing could reach, which 0.8.0 removed.)
 
 ## Service Swapping
 
@@ -125,23 +58,24 @@ LFL uses contracts for all major services, allowing you to swap implementations.
 ```php
 namespace App\Services;
 
-use LaravelFunLab\Contracts\AwardEngineContract;
-use LaravelFunLab\Builders\AwardBuilder;
-use LaravelFunLab\Enums\AwardType;
-use LaravelFunLab\Models\Achievement;
-use LaravelFunLab\ValueObjects\AwardResult;
+use LaravelFunLab\Services\AwardEngine;
+use LaravelFunLab\Services\AwardXpBuilder;
 
-class CustomAwardEngine implements AwardEngineContract
+class CustomAwardEngine extends AwardEngine
 {
-    public function award(AwardType|string $type): AwardBuilder
+    public function award(string $metricSlug): AwardXpBuilder
     {
-        // Custom implementation
-        return new AwardBuilder($type);
+        // Custom behaviour, then the stock builder.
+        return parent::award($metricSlug);
     }
-    
-    // Implement other required methods...
 }
 ```
+
+Implementing `AwardEngineContract` from scratch means implementing `setup()`,
+`award(string $metricSlug): AwardXpBuilder`, `grant(string $slug): GrantBuilder`,
+`hasLevel()`, `profile()`, `leaderboard()`, `analytics()` and the configuration
+readers; extending `AwardEngine` is usually what you want.
+
 
 #### Custom Leaderboard Service
 
@@ -420,113 +354,68 @@ protected $listen = [
 
 ## Custom Models
 
-Extend LFL models to add custom functionality.
+LFL resolves its own models directly, so a subclass cannot be swapped in for
+one. To add behaviour, observe the models it writes. The ones worth observing:
 
-### Extending Models
-
-```php
-namespace App\Models;
-
-use LaravelFunLab\Models\Award as BaseAward;
-
-class Award extends BaseAward
-{
-    /**
-     * Get formatted amount with currency symbol.
-     */
-    public function getFormattedAmountAttribute(): string
-    {
-        return '$' . number_format($this->amount, 2);
-    }
-    
-    /**
-     * Scope for high-value awards.
-     */
-    public function scopeHighValue($query)
-    {
-        return $query->where('amount', '>', 1000);
-    }
-}
-```
-
-### Binding Custom Models
-
-Update model bindings in `AppServiceProvider`:
-
-```php
-use LaravelFunLab\Models\Award;
-use App\Models\Award as CustomAward;
-
-public function boot(): void
-{
-    // Note: This requires modifying LFL's internal model resolution
-    // Consider using model events or observers instead for most use cases
-}
-```
-
-### Using Model Observers
+| Model | Written when |
+|---|---|
+| `ProfileMetric` | XP is awarded to a gamed metric (`total_xp`, `current_level`) |
+| `AchievementGrant` | an achievement is granted |
+| `PrizeGrant` | a prize is granted, claimed or fulfilled |
+| `EventLog` | any logged event: XP, achievement, prize, catalog change |
 
 ```php
 namespace App\Observers;
 
-use LaravelFunLab\Models\Award;
+use LaravelFunLab\Models\PrizeGrant;
 
-class AwardObserver
+class PrizeGrantObserver
 {
-    public function created(Award $award): void
+    public function created(PrizeGrant $grant): void
     {
-        // Custom logic when award is created
-        if ($award->amount > 1000) {
-            // Notify admin of high-value award
-        }
-    }
-    
-    public function updated(Award $award): void
-    {
-        // Custom logic when award is updated
+        // e.g. queue fulfilment for a physical prize
     }
 }
 ```
 
-Register observer in `AppServiceProvider`:
+Register it in `AppServiceProvider`:
 
 ```php
-use LaravelFunLab\Models\Award;
-use App\Observers\AwardObserver;
+use App\Observers\PrizeGrantObserver;
+use LaravelFunLab\Models\PrizeGrant;
 
 public function boot(): void
 {
-    Award::observe(AwardObserver::class);
+    PrizeGrant::observe(PrizeGrantObserver::class);
 }
 ```
 
+For most reactions the events (`XpAwarded`, `MetricLevelReached`,
+`AchievementUnlocked`, `PrizeAwarded`) are simpler than observers, and they
+carry the recipient.
+
 ## Advanced Examples
 
-### Custom Award Type with Business Logic
+### Reacting to a Level-Up
+
+Levels are thresholds on a gamed metric, and crossing one dispatches
+`MetricLevelReached` once per level crossed, in ascending order:
 
 ```php
-// Register custom type
-AwardTypeRegistry::register('experience', 'Experience Points', 'xp', true, 10);
+use Illuminate\Support\Facades\Event;
+use LaravelFunLab\Events\MetricLevelReached;
+use LaravelFunLab\Facades\LFL;
 
-// Add validation
-AwardValidationPipeline::addStep(function ($awardable, $type, $amount) {
-    if ($type === 'experience') {
-        // Level up check
-        $currentXP = $awardable->getTotalPoints('experience');
-        $newXP = $currentXP + $amount;
-        
-        $level = floor($newXP / 1000) + 1;
-        $currentLevel = floor($currentXP / 1000) + 1;
-        
-        if ($level > $currentLevel) {
-            // Level up! Grant achievement
-            LFL::grantAchievement($awardable, "level-{$level}", "Reached level {$level}", 'system');
-        }
+Event::listen(MetricLevelReached::class, function (MetricLevelReached $event) {
+    if ($event->level->level === 5) {
+        LFL::grant('veteran')->to($event->recipient)->because('Reached level 5')->save();
     }
-    
-    return ['valid' => true];
 });
 ```
+
+To grant an achievement on a level without code, attach it to the level instead;
+progression grants it automatically.
+
 
 ### Custom Analytics Service
 

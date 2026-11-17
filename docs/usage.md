@@ -518,7 +518,7 @@ profile-wide total, and lists only profiles with a record for it:
 $combat = LFL::leaderboard()
     ->for(User::class)
     ->metric('combat-xp')      // slug or GamedMetric model
-    ->period('weekly')         // optional; the period score is this metric's XP alone
+    ->period('weekly')         // optional; the score is this metric's XP earned this week
     ->perPage(20)
     ->paginate();
 
@@ -535,6 +535,9 @@ so paging never repeats or skips a row.
 ### Time-Based Leaderboards
 
 ```php
+// A period board ranks on the XP EARNED in the period (from the event log),
+// and lists only profiles that earned some. Weeks start on Monday.
+
 // Daily leaderboard
 $daily = LFL::leaderboard()
     ->for(User::class)

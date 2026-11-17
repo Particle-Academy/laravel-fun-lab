@@ -5,6 +5,7 @@ declare(strict_types=1);
 namespace LaravelFunLab\Services;
 
 use Illuminate\Database\Eloquent\Model;
+use Illuminate\Support\Collection;
 use LaravelFunLab\Facades\LFL;
 use LaravelFunLab\Models\MetricLevelGroup;
 use LaravelFunLab\Models\MetricLevelGroupLevel;
@@ -269,6 +270,53 @@ class MetricLevelGroupService
     }
 
     /**
+     * Claim the group levels newly reached, exactly once.
+     *
+     * The same compare-and-set as MetricLevelService::claimLevels(): the row
+     * moves from the level this copy read to the new one only if nobody moved
+     * it first. If someone did, the copy is refreshed and the levels recomputed
+     * from the stored level, so a group level is claimed (and its achievements
+     * granted) by exactly one caller, and a stale copy never re-claims a level
+     * already recorded. Before 0.8.0 this read, decided and wrote back.
+     *
+     * @param  Collection<int, MetricLevelGroupLevel>  $levels  Ordered ascending
+     * @return array{0: int, 1: list<MetricLevelGroupLevel>}|null [new level, levels unlocked], or null
+     */
+    protected function claimLevels(ProfileMetricGroup $profileMetricGroup, $levels, int $totalXp): ?array
+    {
+        for ($attempt = 0; $attempt < 5; $attempt++) {
+            $fromLevel = (int) $profileMetricGroup->current_level;
+
+            $unlocked = $levels
+                ->filter(fn (MetricLevelGroupLevel $level) => $level->isReached($totalXp) && $level->level > $fromLevel)
+                ->values()
+                ->all();
+
+            if ($unlocked === []) {
+                return null;
+            }
+
+            $newLevel = (int) end($unlocked)->level;
+
+            $claimed = ProfileMetricGroup::query()
+                ->whereKey($profileMetricGroup->getKey())
+                ->where('current_level', $fromLevel)
+                ->update(['current_level' => $newLevel]);
+
+            if ($claimed === 1) {
+                $profileMetricGroup->forceFill(['current_level' => $newLevel])->syncOriginalAttribute('current_level');
+
+                return [$newLevel, $unlocked];
+            }
+
+            // Someone else moved the level: read it back and try again.
+            $profileMetricGroup->refresh();
+        }
+
+        return null;
+    }
+
+    /**
      * Check and update level progression for a ProfileMetricGroup.
      *
      * @param  ProfileMetricGroup  $profileMetricGroup  The ProfileMetricGroup to check
@@ -279,28 +327,16 @@ class MetricLevelGroupService
         $group = $profileMetricGroup->metricLevelGroup;
         $profile = $profileMetricGroup->profile;
         $totalXp = $this->getTotalXp($profile->awardable, $group);
-        $currentLevel = $profileMetricGroup->current_level;
 
         // Get all levels for this group, ordered by level
         $levels = MetricLevelGroupLevel::forGroup($group->id)
             ->ordered()
             ->get();
 
-        $newLevel = null;
-        $levelsUnlocked = [];
+        $claim = $this->claimLevels($profileMetricGroup, $levels, $totalXp);
+        [$newLevel, $levelsUnlocked] = $claim ?? [null, []];
 
-        // Find the highest level reached
-        foreach ($levels as $level) {
-            if ($level->isReached($totalXp) && $level->level > $currentLevel) {
-                $newLevel = $level->level;
-                $levelsUnlocked[] = $level;
-            }
-        }
-
-        // Update current level if a new level was reached
         if ($newLevel !== null) {
-            $profileMetricGroup->setLevel($newLevel);
-
             // Auto-award achievements attached to unlocked levels
             foreach ($levelsUnlocked as $level) {
                 $achievements = $level->achievements()->active()->get();

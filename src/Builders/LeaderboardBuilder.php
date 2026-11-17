@@ -10,6 +10,8 @@ use Illuminate\Database\Eloquent\Collection;
 use Illuminate\Support\Carbon;
 use InvalidArgumentException;
 use LaravelFunLab\Contracts\LeaderboardServiceContract;
+use LaravelFunLab\Exceptions\PeriodLeaderboardUnavailableException;
+use LaravelFunLab\Models\EventLog;
 use LaravelFunLab\Models\GamedMetric;
 use LaravelFunLab\Models\Profile;
 use LaravelFunLab\Models\ProfileMetric;
@@ -280,10 +282,7 @@ class LeaderboardBuilder implements LeaderboardServiceContract
             });
 
         if ($this->isPeriodBoard()) {
-            $query
-                ->addSelect($metricsTable.'.total_xp as period_xp')
-                ->where($metricsTable.'.updated_at', '>=', $this->getPeriodStartDate())
-                ->where($metricsTable.'.total_xp', '>', 0);
+            $query = $this->joinPeriodXp($query, $metric);
         }
 
         return $query;
@@ -292,35 +291,68 @@ class LeaderboardBuilder implements LeaderboardServiceContract
     /**
      * Apply time-based filtering to the query.
      *
-     * For time-based leaderboards, we need to join with profile_metrics and filter by updated_at.
-     * This requires a more complex query that aggregates XP within the time period.
+     * A period board ranks on XP EARNED in the period, so the score comes from
+     * the event log, not from profile_metrics. See joinPeriodXp().
      *
      * @param  Builder<Profile>  $query
      * @return Builder<Profile>
      */
     protected function applyTimeFilter(Builder $query): Builder
     {
-        $startDate = $this->getPeriodStartDate();
-
-        if ($startDate === null) {
+        if ($this->getPeriodStartDate() === null) {
             return $query;
         }
 
-        // For time-based filtering, we need to calculate scores from profile_metrics within the period
-        // This requires joining with the profile_metrics table and aggregating
         $profileTable = (new Profile)->getTable();
-        $metricsTable = (new ProfileMetric)->getTable();
 
-        // Build a subquery to calculate period-specific scores
+        return $this->joinPeriodXp($query->select($profileTable.'.*'), null);
+    }
+
+    /**
+     * Join each profile's XP earned since the period start, as `period_xp`.
+     *
+     * The score is the sum of the `xp_awarded` amounts in the event log since
+     * the period start, optionally for one metric. Before 0.8.0 it was the
+     * LIFETIME total_xp of every metric touched in the period, so 10,000 old XP
+     * plus 1 XP on Monday scored 10,000 on the weekly board.
+     *
+     * The inner join lists only profiles that earned XP in the period. The log
+     * is the only record of WHEN XP was earned, so a period board with the log
+     * off cannot be computed; it is refused rather than returned empty, because
+     * an empty board reads exactly like a quiet week.
+     *
+     * @param  Builder<Profile>  $query
+     * @return Builder<Profile>
+     */
+    protected function joinPeriodXp(Builder $query, ?GamedMetric $metric): Builder
+    {
+        if (! config('lfl.events.log_to_database', true) || ! config('lfl.events.dispatch', true)) {
+            throw new PeriodLeaderboardUnavailableException(
+                'A period leaderboard is computed from the event log, which is off '
+                .'(lfl.events.log_to_database and lfl.events.dispatch must both be true). '
+                .'Use an all-time board, or turn the event log on.'
+            );
+        }
+
+        $profileTable = (new Profile)->getTable();
+        $logTable = (new EventLog)->getTable();
+
+        $earned = EventLog::query()
+            ->toBase()
+            ->select(['awardable_type', 'awardable_id'])
+            ->selectRaw('SUM(amount) as period_xp')
+            ->where('event_type', 'xp_awarded')
+            ->where('occurred_at', '>=', $this->getPeriodStartDate())
+            ->when($metric !== null, fn ($q) => $q->where($logTable.'.context->gamed_metric_slug', $metric->slug))
+            ->groupBy(['awardable_type', 'awardable_id'])
+            ->havingRaw('SUM(amount) > 0');
+
         return $query
-            ->select($profileTable.'.*')
-            ->selectRaw('COALESCE(SUM('.$metricsTable.'.total_xp), 0) as period_xp')
-            ->leftJoin($metricsTable, function ($join) use ($profileTable, $metricsTable, $startDate) {
-                $join->on($profileTable.'.id', '=', $metricsTable.'.profile_id')
-                    ->where($metricsTable.'.updated_at', '>=', $startDate);
-            })
-            ->groupBy($profileTable.'.id')
-            ->havingRaw('COALESCE(SUM('.$metricsTable.'.total_xp), 0) > 0');
+            ->addSelect('period_earned.period_xp')
+            ->joinSub($earned, 'period_earned', function ($join) use ($profileTable) {
+                $join->on('period_earned.awardable_type', '=', $profileTable.'.awardable_type')
+                    ->on('period_earned.awardable_id', '=', $profileTable.'.awardable_id');
+            });
     }
 
     /**
@@ -349,7 +381,9 @@ class LeaderboardBuilder implements LeaderboardServiceContract
         $profileTable = (new Profile)->getTable();
 
         if ($this->metric !== null) {
-            $metricXp = (new ProfileMetric)->getTable().'.total_xp';
+            // In a period, the metric board ranks on that metric's XP earned in
+            // the period, not on its lifetime total.
+            $metricXp = $this->isPeriodBoard() ? 'period_earned.period_xp' : (new ProfileMetric)->getTable().'.total_xp';
 
             return match ($this->sortBy) {
                 'achievements' => $query->orderByDesc($profileTable.'.achievement_count')->orderByDesc($metricXp),

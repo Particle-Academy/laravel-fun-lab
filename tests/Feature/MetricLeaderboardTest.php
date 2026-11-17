@@ -6,8 +6,8 @@ use Illuminate\Support\Carbon;
 use Illuminate\Support\Facades\DB;
 use Illuminate\Support\Facades\Schema;
 use LaravelFunLab\Facades\LFL;
+use LaravelFunLab\Models\EventLog;
 use LaravelFunLab\Models\GamedMetric;
-use LaravelFunLab\Models\ProfileMetric;
 use LaravelFunLab\Tests\Fixtures\User;
 use Symfony\Component\Yaml\Yaml;
 
@@ -115,11 +115,13 @@ describe('LeaderboardBuilder::metric()', function () {
     it('limits a period board to that metric', function () {
         [$a, $b, $c] = mlbSeed();
 
-        // A's combat row last moved a month ago; everything else this week.
-        $combat = GamedMetric::findBySlug('combat');
-        ProfileMetric::where('profile_id', $a->getProfile()->id)
-            ->where('gamed_metric_id', $combat->id)
-            ->update(['updated_at' => Carbon::now()->subMonths(2)]);
+        // A's combat XP was earned two months ago; everything else this week.
+        // Since 0.8.0 "earned" is the event log's occurred_at, not the
+        // profile_metrics row's updated_at.
+        EventLog::where('event_type', 'xp_awarded')
+            ->where('awardable_id', $a->id)
+            ->where('context->gamed_metric_slug', 'combat')
+            ->update(['occurred_at' => Carbon::now()->subMonths(2)]);
 
         $board = LFL::leaderboard()->for(User::class)->metric('combat')->period('weekly')->get();
 
