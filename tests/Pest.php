@@ -15,8 +15,9 @@ declare(strict_types=1);
 
 use LaravelFunLab\Tests\TestCase;
 use LaravelFunLab\Tests\WritesDisabledTestCase;
+use LaravelFunLab\ValueObjects\AwardResult;
 
-uses(TestCase::class)->in('Unit', 'Feature');
+uses(TestCase::class)->in('Unit', 'Feature', 'Conformance');
 
 // Writes-gate tests need config('lfl.api.writes') set to false BEFORE the
 // LFLServiceProvider boots, so they use a dedicated TestCase subclass and
@@ -35,7 +36,7 @@ uses(WritesDisabledTestCase::class)->in('ApiGate');
 */
 
 expect()->extend('toBeAwardResult', function () {
-    return $this->toBeInstanceOf(\LaravelFunLab\ValueObjects\AwardResult::class);
+    return $this->toBeInstanceOf(AwardResult::class);
 });
 
 expect()->extend('toBeSuccessfulAward', function () {

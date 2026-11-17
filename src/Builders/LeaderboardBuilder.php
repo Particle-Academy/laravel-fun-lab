@@ -328,8 +328,10 @@ class LeaderboardBuilder implements LeaderboardServiceContract
     {
         if (! config('lfl.events.log_to_database', true) || ! config('lfl.events.dispatch', true)) {
             throw new PeriodLeaderboardUnavailableException(
-                'A period leaderboard is computed from the event log, which is off '
-                .'(lfl.events.log_to_database and lfl.events.dispatch must both be true). '
+                // Runtime-neutral on purpose: the Node and Python twins return
+                // this exact message (fun-lab/leaderboard 0010), and they have
+                // no `lfl.events.*` config. The keys are in the docs.
+                'A period leaderboard is computed from the event log, which is off. '
                 .'Use an all-time board, or turn the event log on.'
             );
         }
