@@ -29,10 +29,13 @@ class AnalyticsBuilder implements AnalyticsServiceContract
 
     protected ?string $awardableType = null;
 
-    /** @var \Carbon\Carbon|\Illuminate\Support\Carbon|null */
+    /** Set by forAwardable(): narrows to that one awardable, not just its type. */
+    protected int|string|null $awardableId = null;
+
+    /** @var \Carbon\Carbon|Carbon|null */
     protected $startDate = null;
 
-    /** @var \Carbon\Carbon|\Illuminate\Support\Carbon|null */
+    /** @var \Carbon\Carbon|Carbon|null */
     protected $endDate = null;
 
     protected ?string $source = null;
@@ -135,11 +138,11 @@ class AnalyticsBuilder implements AnalyticsServiceContract
     /**
      * Filter analytics between two dates.
      *
-     * @param  \Carbon\Carbon|\Illuminate\Support\Carbon|string  $start  Start date
-     * @param  \Carbon\Carbon|\Illuminate\Support\Carbon|string|null  $end  End date (defaults to now)
+     * @param  \Carbon\Carbon|Carbon|string  $start  Start date
+     * @param  \Carbon\Carbon|Carbon|string|null  $end  End date (defaults to now)
      * @return $this
      */
-    public function between(\Carbon\Carbon|\Illuminate\Support\Carbon|string $start, \Carbon\Carbon|\Illuminate\Support\Carbon|string|null $end = null): self
+    public function between(\Carbon\Carbon|Carbon|string $start, \Carbon\Carbon|Carbon|string|null $end = null): self
     {
         $this->startDate = ($start instanceof \Carbon\Carbon || $start instanceof Carbon) ? $start : Carbon::parse($start);
         $this->endDate = ($end instanceof \Carbon\Carbon || $end instanceof Carbon) ? $end : ($end !== null ? Carbon::parse($end) : Carbon::now());
@@ -150,10 +153,10 @@ class AnalyticsBuilder implements AnalyticsServiceContract
     /**
      * Filter analytics since a specific date.
      *
-     * @param  \Carbon\Carbon|\Illuminate\Support\Carbon|string  $date  The start date
+     * @param  \Carbon\Carbon|Carbon|string  $date  The start date
      * @return $this
      */
-    public function since(\Carbon\Carbon|\Illuminate\Support\Carbon|string $date): self
+    public function since(\Carbon\Carbon|Carbon|string $date): self
     {
         $this->startDate = ($date instanceof \Carbon\Carbon || $date instanceof Carbon) ? $date : Carbon::parse($date);
         $this->endDate = Carbon::now();
@@ -164,10 +167,10 @@ class AnalyticsBuilder implements AnalyticsServiceContract
     /**
      * Filter analytics until a specific date.
      *
-     * @param  \Carbon\Carbon|\Illuminate\Support\Carbon|string  $date  The end date
+     * @param  \Carbon\Carbon|Carbon|string  $date  The end date
      * @return $this
      */
-    public function until(\Carbon\Carbon|\Illuminate\Support\Carbon|string $date): self
+    public function until(\Carbon\Carbon|Carbon|string $date): self
     {
         $this->endDate = ($date instanceof \Carbon\Carbon || $date instanceof Carbon) ? $date : Carbon::parse($date);
 
@@ -268,6 +271,9 @@ class AnalyticsBuilder implements AnalyticsServiceContract
         }
         if ($this->awardableType !== null) {
             $baseQuery->where('awardable_type', $this->awardableType);
+        }
+        if ($this->awardableId !== null) {
+            $baseQuery->where('awardable_id', $this->awardableId);
         }
         if ($this->source !== null) {
             $baseQuery->fromSource($this->source);
@@ -434,7 +440,7 @@ class AnalyticsBuilder implements AnalyticsServiceContract
     public function bySource(): array
     {
         $results = $this->buildQuery()
-            ->selectRaw('COALESCE(source, "unknown") as source')
+            ->selectRaw("COALESCE(source, 'unknown') as source")
             ->selectRaw('COUNT(*) as count')
             ->selectRaw('COALESCE(SUM(amount), 0) as total')
             ->groupBy('source')
@@ -458,7 +464,9 @@ class AnalyticsBuilder implements AnalyticsServiceContract
      */
     public function export(?int $limit = null): array
     {
-        $query = $this->buildQuery()->orderBy('occurred_at', 'desc');
+        // Ties (rows logged in the same instant) break on id, newest first, so
+        // the order is a property of the data rather than of the database.
+        $query = $this->buildQuery()->orderBy('occurred_at', 'desc')->orderBy('id', 'desc');
 
         if ($limit !== null) {
             $query->limit($limit);
@@ -509,6 +517,9 @@ class AnalyticsBuilder implements AnalyticsServiceContract
         if ($this->awardableType !== null) {
             $query->where('awardable_type', $this->awardableType);
         }
+        if ($this->awardableId !== null) {
+            $query->where('awardable_id', $this->awardableId);
+        }
 
         // Filter by achievement slug
         if ($this->achievementSlug !== null) {
@@ -541,8 +552,9 @@ class AnalyticsBuilder implements AnalyticsServiceContract
      */
     protected function whereAwardable(Model $awardable): self
     {
-        // This will be applied in buildQuery via awardableType
-        // Additional filtering by ID would need to be added if needed
+        // Applied in buildQuery() beside the type. Before 0.8.0 this was a
+        // no-op, so forAwardable() answered for every awardable of the type.
+        $this->awardableId = $awardable->getKey();
 
         return $this;
     }

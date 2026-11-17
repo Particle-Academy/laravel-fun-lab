@@ -22,6 +22,9 @@ Pre-1.0: breaking changes land in MINOR releases, so read the BREAKING lines bef
 
 ### Fixed
 
+- **`LFL::analytics()->forAwardable($user)` answers for that awardable.** It filtered by the awardable's TYPE only, so every count, total and series covered every user. **Consumer action:** none, unless you relied on the old answer, which was wrong.
+- **`export()` orders rows logged in the same instant by id, newest first.** Ties were in whatever order the database returned them.
+- **`bySource()` writes its `unknown` fallback as a string literal.** It was double-quoted, which SQLite and MySQL read as a string and Postgres reads as a column name, so on Postgres the query failed.
 - **The API reference and extension guide describe the API that exists.** `docs/api.md` documented `award(): AwardBuilder`, `awardGamedMetric()`, `grantAchievement()`, `awardPrize()`, `awardBadge()`, `setup(an: ...)`, leaderboard `limit()` / `includeOptedOut()` and Awardable `getTotalPoints()` / `awards()`, none of which exist, and an `Award` model that does not either. It now documents `setup()`, `award()` with `AwardXpBuilder`, `grant()` with `GrantBuilder`, `hasLevel()`, the real leaderboard and Awardable methods. `docs/extending.md` no longer says a registered award type can be passed to `award()`; it shows a gamed metric as the way to add a currency.
 
 ## [0.7.0] - 2026-11-04
