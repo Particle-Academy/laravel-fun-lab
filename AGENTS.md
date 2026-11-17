@@ -49,6 +49,14 @@ Find it with `search-backend-packages` (stack `php`) and use
   or the endpoint returns 422. Details, CORS and the two auth flows are in
   [docs/react.md](./docs/react.md).
 - **A cross-origin SPA needs CORS configured in the host app.**
+- **A daily, weekly or monthly leaderboard needs the event log on** (since
+  0.8.0). It ranks on the XP earned in the period, which only the event log
+  records, so with `lfl.events.log_to_database` or `lfl.events.dispatch` off,
+  `period()` throws `PeriodLeaderboardUnavailableException` and the REST
+  endpoint answers 422. All-time boards do not need it.
+- **A default display name is `Str::headline()` of the slug**, which lowercases
+  acronyms: `setup(a: 'gamed-metric', with: ['slug' => 'Combat XP'])` is named
+  "Combat Xp". Pass `name` when it matters.
 
 ## When you build with this kit
 

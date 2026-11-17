@@ -7,7 +7,9 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
-Pre-1.0: breaking changes land in MINOR releases, so read the BREAKING lines before upgrading across one.
+## [0.8.0] - 2026-11-17
+
+Pre-1.0: breaking changes land in MINOR releases, so read the BREAKING lines before upgrading across one. **Upgrading from 0.7:** if you never call `period()` on a leaderboard with the event log turned off and never construct `AwardBuilder` yourself, there is nothing to do; your weekly boards simply start ranking on the XP earned that week.
 
 ### Added
 
