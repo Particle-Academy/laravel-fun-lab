@@ -67,11 +67,18 @@ final class ScenarioRunner
     /** @var list<array<string, mixed>> */
     private array $events = [];
 
+    /** @var list<array{event: string, payload: array<string, mixed>}> */
+    private array $broadcasts = [];
+
     /**
+     * With `$broadcasts`, each step reports the broadcastWith() payload of every
+     * broadcastable event it emitted (fun-lab/events) instead of the contract
+     * fields (fun-lab/progression and the rest).
+     *
      * @param  array<string, mixed>  $input
      * @return array{steps: list<array<string, mixed>>}
      */
-    public function run(array $input): array
+    public function run(array $input, bool $broadcasts = false): array
     {
         Carbon::setTestNow(Carbon::parse((string) $input['clock']));
 
@@ -98,8 +105,11 @@ final class ScenarioRunner
             $steps = [];
             foreach ((array) $input['steps'] as $step) {
                 $this->events = [];
+                $this->broadcasts = [];
                 $result = $this->step($step);
-                $steps[] = ['result' => $result, 'events' => $this->events];
+                $steps[] = $broadcasts
+                    ? ['result' => $result, 'broadcasts' => $this->broadcasts]
+                    : ['result' => $result, 'events' => $this->events];
             }
 
             return ['steps' => $steps];
@@ -380,6 +390,13 @@ final class ScenarioRunner
         $push = function (string $name, array $fields): void {
             $this->events[] = ['event' => $name] + $fields;
         };
+
+        // The wire payloads, exactly as Echo receives them, for fun-lab/events.
+        foreach ([XpAwarded::class, MetricLevelReached::class, AchievementUnlocked::class, PrizeAwarded::class] as $class) {
+            Event::listen($class, function (object $e): void {
+                $this->broadcasts[] = ['event' => $e->broadcastAs(), 'payload' => $e->broadcastWith()];
+            });
+        }
 
         Event::listen(XpAwarded::class, fn (XpAwarded $e) => $push('xp.awarded', [
             'metric' => $e->gamedMetric->slug, 'amount' => $e->amount, 'total_xp' => (int) $e->profileMetric->total_xp,

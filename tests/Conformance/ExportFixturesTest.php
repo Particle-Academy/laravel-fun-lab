@@ -53,6 +53,7 @@ function funLabExpected(array $case): mixed
         'slug' => Str::slug((string) $case['input']['value']),
         'headline' => Str::headline((string) $case['input']['value']),
         'scenario' => (new ScenarioRunner)->run($case['input']),
+        'broadcasts' => (new ScenarioRunner)->run($case['input'], broadcasts: true),
     };
 }
 

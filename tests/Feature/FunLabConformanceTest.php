@@ -25,7 +25,7 @@ use ParticleAcademy\Conformance\Conformance;
 */
 
 /** Moved deliberately, never automatically. A pin that follows disk asserts nothing. */
-const FUN_LAB_SUITE_VERSION = '0.49.0';
+const FUN_LAB_SUITE_VERSION = '0.50.0';
 
 const FUN_LAB_SUITES = [
     'fun-lab/strings' => 21,
@@ -33,6 +33,7 @@ const FUN_LAB_SUITES = [
     'fun-lab/grants' => 10,
     'fun-lab/leaderboard' => 11,
     'fun-lab/analytics' => 8,
+    'fun-lab/events' => 9,
 ];
 
 function runFunLabCase(array $case): mixed
@@ -40,10 +41,10 @@ function runFunLabCase(array $case): mixed
     return match ($case['fn']) {
         'slug' => Str::slug((string) $case['input']['value']),
         'headline' => Str::headline((string) $case['input']['value']),
-        'scenario' => (function () use ($case) {
+        'scenario', 'broadcasts' => (function () use ($case) {
             DB::beginTransaction();
             try {
-                return (new ScenarioRunner)->run($case['input']);
+                return (new ScenarioRunner)->run($case['input'], broadcasts: $case['fn'] === 'broadcasts');
             } finally {
                 DB::rollBack();
             }
