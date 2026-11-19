@@ -16,6 +16,10 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - CI: re-pin org third-party allowlist to 2614224
 - Tests moved to Pest 5; `orchestra/testbench` removed from require-dev. The suite boots a small first-party harness on `laravel/framework`, now a require-dev of its own: the framework this package integrates with, as a test dependency (the integration-framework carve-out). `InstallCommandTest` reads console output through `Artisan::output()` instead of Mockery-backed `expectsOutputToContain()`, so the suite needs no mocking library. No runtime change. **Consumer action:** none.
 
+### Security
+
+- symfony/yaml floor raised to `^6.4.50|^7.4.23|^8.1.11` (was `^6.0|^7.0|^8.0`) to exclude CVE-2026-123792 (exponential and quadratic parse times, fixed in 6.4.50 / 7.4.23 / 8.1.11) and CVE-2026-109413 (high: unbounded recursion in the inline lexer, fixed in 6.4.45 / 7.4.18 / 8.1.6). Lines 6.0-6.3 and 7.0-7.3 have no fixed release and are dropped. Consumers on a vulnerable version get the fix by updating (`composer update symfony/yaml`); no API change.
+
 ## [0.8.0] - 2026-11-17
 
 Pre-1.0: breaking changes land in MINOR releases, so read the BREAKING lines before upgrading across one. **Upgrading from 0.7:** if you never call `period()` on a leaderboard with the event log turned off and never construct `AwardBuilder` yourself, there is nothing to do; your weekly boards simply start ranking on the XP earned that week.
