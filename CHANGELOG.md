@@ -7,6 +7,8 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [0.8.1] - 2026-11-19
+
 ### Added
 
 - **The broadcast payloads are pinned too.** `tests/Feature/FunLabConformanceTest.php` runs the new `fun-lab/events` table (fancy-conformance 0.50.0, 9 rows): the exact `broadcastWith()` output of `XpAwarded`, `MetricLevelReached`, `AchievementUnlocked` and `PrizeAwarded`, which the Node and Python twins now match. The goldens were exported from this package's event classes by `tests/Conformance/ExportFixturesTest.php`, whose `ScenarioRunner` gained a `broadcasts` mode. Test-only; no event changed. **Consumer action:** none.
