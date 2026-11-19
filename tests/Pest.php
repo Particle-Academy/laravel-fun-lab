@@ -9,7 +9,7 @@ declare(strict_types=1);
 |
 | The closure you provide to your test functions is always bound to a specific
 | PHPUnit test case class. By default, that class is "PHPUnit\Framework\TestCase".
-| We use the package TestCase that extends Orchestra Testbench.
+| We use the package TestCase: a hand-built Laravel application (no testbench).
 |
 */
 

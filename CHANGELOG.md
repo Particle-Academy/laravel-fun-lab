@@ -14,6 +14,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 ### Changed
 
 - CI: re-pin org third-party allowlist to 2614224
+- Tests moved to Pest 5; `orchestra/testbench` removed from require-dev. The suite boots a small first-party harness on `laravel/framework`, now a require-dev of its own: the framework this package integrates with, as a test dependency (the integration-framework carve-out). `InstallCommandTest` reads console output through `Artisan::output()` instead of Mockery-backed `expectsOutputToContain()`, so the suite needs no mocking library. No runtime change. **Consumer action:** none.
 
 ## [0.8.0] - 2026-11-17
 

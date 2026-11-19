@@ -2,6 +2,7 @@
 
 declare(strict_types=1);
 
+use Illuminate\Support\Facades\Artisan;
 use Illuminate\Support\Facades\File;
 
 /*
@@ -34,9 +35,9 @@ describe('InstallCommand', function () {
     });
 
     it('is registered as an artisan command', function () {
-        $this->artisan('list')
-            ->expectsOutputToContain('lfl:install')
-            ->assertExitCode(0);
+        expect($this->artisan('list'))->toBe(0);
+        $output = Artisan::output();
+        expect($output)->toContain('lfl:install');
     });
 
     it('has correct signature with options', function () {
@@ -46,8 +47,7 @@ describe('InstallCommand', function () {
     });
 
     it('publishes config file with default prefix', function () {
-        $this->artisan('lfl:install', ['--skip-migrations' => true])
-            ->assertExitCode(0);
+        expect($this->artisan('lfl:install', ['--skip-migrations' => true]))->toBe(0);
 
         expect(File::exists(config_path('lfl.php')))->toBeTrue();
 
@@ -56,8 +56,7 @@ describe('InstallCommand', function () {
     });
 
     it('can customize table prefix via option', function () {
-        $this->artisan('lfl:install', ['--skip-migrations' => true, '--prefix' => 'custom_'])
-            ->assertExitCode(0);
+        expect($this->artisan('lfl:install', ['--skip-migrations' => true, '--prefix' => 'custom_']))->toBe(0);
 
         $configContent = File::get(config_path('lfl.php'));
         expect($configContent)->toContain("'custom_'");
@@ -67,49 +66,47 @@ describe('InstallCommand', function () {
         // Create a dummy config file
         File::put(config_path('lfl.php'), '<?php return [];');
 
-        $this->artisan('lfl:install', ['--force' => true, '--skip-migrations' => true])
-            ->assertExitCode(0);
+        expect($this->artisan('lfl:install', ['--force' => true, '--skip-migrations' => true]))->toBe(0);
 
         $configContent = File::get(config_path('lfl.php'));
         expect($configContent)->toContain('table_prefix');
     });
 
     it('skips migrations when skip-migrations flag is provided', function () {
-        $this->artisan('lfl:install', ['--skip-migrations' => true])
-            ->assertExitCode(0);
+        expect($this->artisan('lfl:install', ['--skip-migrations' => true]))->toBe(0);
 
         expect(File::exists(config_path('lfl.php')))->toBeTrue();
     });
 
     it('displays success message after installation', function () {
-        $this->artisan('lfl:install', ['--skip-migrations' => true])
-            ->expectsOutputToContain('Laravel Fun Lab installed')
-            ->assertExitCode(0);
+        expect($this->artisan('lfl:install', ['--skip-migrations' => true]))->toBe(0);
+        $output = Artisan::output();
+        expect($output)->toContain('Laravel Fun Lab installed');
     });
 
     it('shows quick start guide in success message', function () {
-        $this->artisan('lfl:install', ['--skip-migrations' => true])
-            ->expectsOutputToContain('Quick Start')
-            ->expectsOutputToContain('Awardable')
-            ->assertExitCode(0);
+        expect($this->artisan('lfl:install', ['--skip-migrations' => true]))->toBe(0);
+        $output = Artisan::output();
+        expect($output)->toContain('Quick Start');
+        expect($output)->toContain('Awardable');
     });
 
     it('suggests ui flag when installed without ui', function () {
-        $this->artisan('lfl:install', ['--skip-migrations' => true])
-            ->expectsOutputToContain('lfl:install --ui')
-            ->assertExitCode(0);
+        expect($this->artisan('lfl:install', ['--skip-migrations' => true]))->toBe(0);
+        $output = Artisan::output();
+        expect($output)->toContain('lfl:install --ui');
     });
 
     it('includes config path in output', function () {
-        $this->artisan('lfl:install', ['--skip-migrations' => true])
-            ->expectsOutputToContain('config/lfl.php')
-            ->assertExitCode(0);
+        expect($this->artisan('lfl:install', ['--skip-migrations' => true]))->toBe(0);
+        $output = Artisan::output();
+        expect($output)->toContain('config/lfl.php');
     });
 
     it('includes facade usage in quick start', function () {
-        $this->artisan('lfl:install', ['--skip-migrations' => true])
-            ->expectsOutputToContain('LaravelFunLab\Facades\LFL')
-            ->assertExitCode(0);
+        expect($this->artisan('lfl:install', ['--skip-migrations' => true]))->toBe(0);
+        $output = Artisan::output();
+        expect($output)->toContain('LaravelFunLab\Facades\LFL');
     });
 
 });
@@ -137,15 +134,15 @@ describe('InstallCommand UI flag', function () {
     });
 
     it('installs UI components when ui flag is provided', function () {
-        $this->artisan('lfl:install', ['--ui' => true, '--skip-migrations' => true])
-            ->expectsOutputToContain('UI components installed')
-            ->assertExitCode(0);
+        expect($this->artisan('lfl:install', ['--ui' => true, '--skip-migrations' => true]))->toBe(0);
+        $output = Artisan::output();
+        expect($output)->toContain('UI components installed');
     });
 
     it('does not show ui tip when ui flag is provided', function () {
-        $this->artisan('lfl:install', ['--ui' => true, '--skip-migrations' => true])
-            ->doesntExpectOutputToContain('Tip:')
-            ->assertExitCode(0);
+        expect($this->artisan('lfl:install', ['--ui' => true, '--skip-migrations' => true]))->toBe(0);
+        $output = Artisan::output();
+        expect($output)->not->toContain('Tip:');
     });
 
 });
