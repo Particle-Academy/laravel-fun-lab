@@ -11,6 +11,10 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 - **The broadcast payloads are pinned too.** `tests/Feature/FunLabConformanceTest.php` runs the new `fun-lab/events` table (fancy-conformance 0.50.0, 9 rows): the exact `broadcastWith()` output of `XpAwarded`, `MetricLevelReached`, `AchievementUnlocked` and `PrizeAwarded`, which the Node and Python twins now match. The goldens were exported from this package's event classes by `tests/Conformance/ExportFixturesTest.php`, whose `ScenarioRunner` gained a `broadcasts` mode. Test-only; no event changed. **Consumer action:** none.
 
+### Changed
+
+- CI: re-pin org third-party allowlist to 2614224
+
 ## [0.8.0] - 2026-11-17
 
 Pre-1.0: breaking changes land in MINOR releases, so read the BREAKING lines before upgrading across one. **Upgrading from 0.7:** if you never call `period()` on a leaderboard with the event log turned off and never construct `AwardBuilder` yourself, there is nothing to do; your weekly boards simply start ranking on the XP earned that week.
