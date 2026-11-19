@@ -28,13 +28,13 @@
         "illuminate/routing": "^13.0",
         "illuminate/support": "^13.0",
         "illuminate/validation": "^13.0",
+        "laravel/framework": "^13.0",
         "symfony/yaml": "^6.4.50|^7.4.23|^8.1.11"
     },
     "replace": {
         "particleacademy/laravel-fun-lab": "self.version"
     },
     "require-dev": {
-        "laravel/framework": "^13.0",
         "laravel/pint": "^1.26",
         "particle-academy/fancy-conformance": "0.50.0",
         "pestphp/pest": "^5.0"

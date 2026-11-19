@@ -7,6 +7,12 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+### Changed
+
+- **BREAKING:** Laravel 13 is the minimum; an app on Laravel 12 or older can no longer install this; upgrade Laravel. On Laravel 13, do nothing.
+- Requires `laravel/framework` `^13.0`, because `src/` uses `Illuminate\Foundation`, which ships only in the framework. It moved from `require-dev` to `require`.
+- **Docs:** `docs/installation.md` listed PHP 8.2 and Laravel 11.x or 12.x as requirements; it now says PHP 8.4 and Laravel 13.x, which is what `composer.json` already required.
+
 ## [0.8.1] - 2026-11-19
 
 ### Added

@@ -4,8 +4,8 @@ This guide covers installing Laravel Fun Lab in your Laravel application, includ
 
 ## Requirements
 
-- PHP 8.2 or higher
-- Laravel 11.x or 12.x
+- PHP 8.4 or higher
+- Laravel 13.x
 - Composer
 
 ## Installation
